@@ -20,3 +20,18 @@ test("children nest under parent and cover point", () => {
     expect(algebra.parent(k)).toBe(parent)
   }
 })
+
+test("neighbors are mutual for cardinal directions", () => {
+  const code = geosot.locToQuaternary(116.315228, 39.91028, 15)
+  const n4 = algebra.neighbors(code)
+  expect(n4).toHaveLength(4)
+  expect(n4).not.toContain(code)
+  for (const n of n4) {
+    expect(algebra.neighbors(n)).toContain(code)
+  }
+})
+
+test("diagonal neighbors length 8", () => {
+  const code = geosot.locToQuaternary(116.315228, 39.91028, 15)
+  expect(algebra.neighbors(code, { diagonal: true })).toHaveLength(8)
+})
