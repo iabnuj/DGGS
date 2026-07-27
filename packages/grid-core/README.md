@@ -27,11 +27,14 @@ npm test
 npm run build
 ```
 
-## 后续迭代（计划）
+## 已提供
 
-- `parent` / `children` / `neighbors`
-- `coverBBox`（视窗 → 格子集合）
-- 金样例与往返一致性测试
+| 模块 | API |
+|------|-----|
+| `algebra` | `parent` / `children` / `neighbors` / `aggregate` |
+| `cover` | `coverBBox` |
+
+金样例与往返一致性见 `test/consistency.test.ts`。
 
 详见：
 
