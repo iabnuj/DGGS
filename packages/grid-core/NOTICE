@@ -1,0 +1,8 @@
+This package incorporates source code originally from:
+
+  https://github.com/catnuko/geosot
+  (MIT License; derived from dadream/geosot GeoSOT encode/decode)
+
+Copyright notices from the upstream project are retained in LICENSE.
+
+Subsequent modifications are part of the DGGS project (@dggs/grid-core).
