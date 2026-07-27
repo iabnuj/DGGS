@@ -54,3 +54,20 @@ export function neighbors(
   }
   return out
 }
+
+export function aggregate(codes: string[], toLevel: number): string[] {
+  if (toLevel < 0 || toLevel > 32) throw new Error(`invalid toLevel: ${toLevel}`)
+  const set = new Set<string>()
+  for (const code of codes) {
+    let { id, level } = geosot.toId(code)
+    if (level < toLevel) {
+      throw new Error(`code level ${level} < toLevel ${toLevel}: ${code}`)
+    }
+    let mask = 0n
+    for (let i = 0; i < toLevel; i++) {
+      mask |= 0x3n << ((31n - BigInt(i)) * 2n)
+    }
+    set.add(geosot.toCode(id & mask, toLevel))
+  }
+  return [...set]
+}

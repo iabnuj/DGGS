@@ -35,3 +35,14 @@ test("diagonal neighbors length 8", () => {
   const code = geosot.locToQuaternary(116.315228, 39.91028, 15)
   expect(algebra.neighbors(code, { diagonal: true })).toHaveLength(8)
 })
+
+test("aggregate rolls fine codes to coarse unique parents", () => {
+  const a = geosot.locToQuaternary(116.315228, 39.91028, 18)
+  const b = geosot.locToQuaternary(116.316, 39.911, 18)
+  const coarse = algebra.aggregate([a, b, a], 15)
+  expect(new Set(coarse).size).toBe(coarse.length)
+  for (const c of coarse) {
+    expect(geosot.getLevel(c)).toBe(15)
+  }
+  expect(coarse).toContain(geosot.locToQuaternary(116.315228, 39.91028, 15))
+})
