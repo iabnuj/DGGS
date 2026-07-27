@@ -1,11 +1,5 @@
 import * as geosot from "./geosot"
-import * as morton from "./morton"
-
-function idFromXY(x: number, y: number, level: number): bigint {
-  const l = BigInt(x) << BigInt(32 - level)
-  const b = BigInt(y) << BigInt(32 - level)
-  return morton.magicbits(l, b)
-}
+import { idFromXY } from "./xy"
 
 export function parent(code: string): string | null {
   const { id, level } = geosot.toId(code)
