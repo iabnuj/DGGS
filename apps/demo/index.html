@@ -22,13 +22,31 @@
 
       <section class="panel__block">
         <label class="field">
-          <span>层级</span>
+          <span>网格层级</span>
           <input id="levelInput" type="number" min="4" max="18" value="12" />
+        </label>
+        <label class="field">
+          <span>网格层数（高度向）</span>
+          <input id="heightCount" type="number" min="1" max="10" value="1" />
         </label>
         <label class="field field--check">
           <input id="autoLevel" type="checkbox" checked />
           <span>随相机高度自动调级</span>
         </label>
+        <div class="toggles">
+          <label class="field field--check">
+            <input id="showOutline" type="checkbox" checked />
+            <span>显示边框</span>
+          </label>
+          <label class="field field--check">
+            <input id="showFaces" type="checkbox" />
+            <span>显示面</span>
+          </label>
+          <label class="field field--check">
+            <input id="showCode" type="checkbox" />
+            <span>显示编码</span>
+          </label>
+        </div>
         <button id="refreshBtn" type="button" class="btn">刷新视窗格子</button>
       </section>
 

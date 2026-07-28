@@ -1,13 +1,23 @@
 import {
+  Cartesian2,
+  Cartesian3,
   Color,
   ColorGeometryInstanceAttribute,
   GeometryInstance,
+  LabelCollection,
+  LabelStyle,
   Math as CesiumMath,
+  Material,
   PerInstanceColorAppearance,
+  PolylineGeometry,
+  PolylineMaterialAppearance,
   Primitive,
   Rectangle,
   RectangleGeometry,
   RectangleOutlineGeometry,
+  VerticalOrigin,
+  HorizontalOrigin,
+  ArcType,
   type Viewer,
 } from "cesium"
 import { geosot, cover } from "@dggs/grid-core"
@@ -27,6 +37,24 @@ type CellMeta = CellPick
 /** Cesium Rectangle rejects |lat| > 90°; GeoSOT coarse cells can exceed that. */
 const MAX_LAT = 90 - 1e-6
 const MAX_LON = 180 - 1e-6
+
+/** Approx meters per degree latitude (same heuristic as test.html). */
+const METERS_PER_DEG_LAT = 110_574
+
+export type GridDrawOptions = {
+  showOutline: boolean
+  showFaces: boolean
+  showCode: boolean
+  /** Vertical stack count (≥1). Layer thickness ≈ cell lat span × 110574 m. */
+  heightCount: number
+}
+
+const DEFAULT_OPTIONS: GridDrawOptions = {
+  showOutline: true,
+  showFaces: false,
+  showCode: false,
+  heightCount: 1,
+}
 
 function clampLat(v: number) {
   return Math.max(-MAX_LAT, Math.min(MAX_LAT, v))
@@ -50,7 +78,6 @@ export function viewRectToBBoxes(rect: Rectangle): BBox[] {
   north = clampLat(north)
   if (!(south < north)) return []
 
-  // Antimeridian: Cesium may return west > east (e.g. 170 → -170).
   if (west > east) {
     const left = { west: clampLon(west), south, east: MAX_LON, north }
     const right = { west: -MAX_LON, south, east: clampLon(east), north }
@@ -68,7 +95,6 @@ function fallbackBBoxes(viewer: Viewer): BBox[] {
   const carto = viewer.camera.positionCartographic
   const lng = CesiumMath.toDegrees(carto.longitude)
   const lat = CesiumMath.toDegrees(carto.latitude)
-  // Rough ground span from altitude (radians ≈ height / R for small angles).
   const span = Math.max(2, Math.min(80, (carto.height / 6378137) * (180 / Math.PI) * 1.4))
   const west = clampLon(lng - span)
   const east = clampLon(lng + span)
@@ -77,7 +103,6 @@ function fallbackBBoxes(viewer: Viewer): BBox[] {
   if (west < east && south < north) {
     return [{ west, south, east, north }]
   }
-  // Near ±180 with wide span: split via synthetic wrapping rectangle degrees
   const w = lng - span
   const e = lng + span
   if (w < -180 || e > 180) {
@@ -95,19 +120,34 @@ function fallbackBBoxes(viewer: Viewer): BBox[] {
 }
 
 /**
- * Viewport grid as a lat/lon-style mesh: outlines for every cell,
- * light fill only on highlighted (e.g. alert) cells.
+ * Viewport grid mesh with toggles for outline / face / code / vertical layers
+ * (display style aligned with apps/demo/test.html).
  */
 export class GridLayer {
   private outlinePrimitive: Primitive | undefined
   private fillPrimitive: Primitive | undefined
+  private pillarPrimitive: Primitive | undefined
+  private labelCollection: LabelCollection | undefined
   private cells: CellMeta[] = []
   private highlightCodes = new Set<string>()
+  private options: GridDrawOptions = { ...DEFAULT_OPTIONS }
 
   constructor(private viewer: Viewer) {}
 
   get size() {
     return this.cells.length
+  }
+
+  getOptions(): GridDrawOptions {
+    return { ...this.options }
+  }
+
+  setOptions(partial: Partial<GridDrawOptions>) {
+    this.options = {
+      ...this.options,
+      ...partial,
+      heightCount: Math.max(1, Math.min(10, Math.floor(partial.heightCount ?? this.options.heightCount))),
+    }
   }
 
   clear() {
@@ -118,6 +158,14 @@ export class GridLayer {
     if (this.fillPrimitive) {
       this.viewer.scene.primitives.remove(this.fillPrimitive)
       this.fillPrimitive = undefined
+    }
+    if (this.pillarPrimitive) {
+      this.viewer.scene.primitives.remove(this.pillarPrimitive)
+      this.pillarPrimitive = undefined
+    }
+    if (this.labelCollection) {
+      this.viewer.scene.primitives.remove(this.labelCollection)
+      this.labelCollection = undefined
     }
     this.cells = []
   }
@@ -181,13 +229,24 @@ export class GridLayer {
     this.clear()
     if (codes.length === 0) return
 
+    const { showOutline, showFaces, showCode, heightCount } = this.options
+    if (!showOutline && !showFaces && !showCode) return
+
     const outlineInstances: GeometryInstance[] = []
     const fillInstances: GeometryInstance[] = []
+    const pillarInstances: GeometryInstance[] = []
     this.cells = []
 
-    const lineColor = Color.fromCssColorString("#1a5c45").withAlpha(0.85)
+    const outlineColor = Color.WHITE.withAlpha(0.35)
+    const faceColor = Color.GREEN.withAlpha(0.2)
     const hiLine = Color.fromCssColorString("#b91c1c").withAlpha(0.95)
-    const hiFill = Color.fromCssColorString("#b91c1c").withAlpha(0.2)
+    const hiFill = Color.fromCssColorString("#b91c1c").withAlpha(0.28)
+
+    let labels: LabelCollection | undefined
+    if (showCode) {
+      labels = this.viewer.scene.primitives.add(new LabelCollection())
+      this.labelCollection = labels
+    }
 
     for (const code of codes) {
       const b = geosot.bboxFromCode(code)
@@ -199,56 +258,139 @@ export class GridLayer {
 
       const hi = this.highlightCodes.has(code)
       const rectangle = Rectangle.fromDegrees(west, south, east, north)
+      const layerH = Math.max(50, (north - south) * METERS_PER_DEG_LAT)
+      const totalH = layerH * heightCount
+      const cx = (west + east) / 2
+      const cy = (south + north) / 2
 
-      outlineInstances.push(
-        new GeometryInstance({
-          id: code,
-          geometry: new RectangleOutlineGeometry({
-            rectangle,
-            height: 80,
-          }),
-          attributes: {
-            color: ColorGeometryInstanceAttribute.fromColor(hi ? hiLine : lineColor),
-          },
-        })
-      )
+      for (let k = 0; k < heightCount; k++) {
+        const h0 = k * layerH
+        const h1 = h0 + layerH
 
-      if (hi) {
-        fillInstances.push(
-          new GeometryInstance({
-            id: `${code}#fill`,
-            geometry: new RectangleGeometry({
-              rectangle,
-              height: 60,
-              vertexFormat: PerInstanceColorAppearance.VERTEX_FORMAT,
-            }),
-            attributes: {
-              color: ColorGeometryInstanceAttribute.fromColor(hiFill),
-            },
+        if (showOutline) {
+          outlineInstances.push(
+            new GeometryInstance({
+              id: k === 0 ? code : `${code}#o${k}`,
+              geometry: new RectangleOutlineGeometry({
+                rectangle,
+                height: h0,
+              }),
+              attributes: {
+                color: ColorGeometryInstanceAttribute.fromColor(hi ? hiLine : outlineColor),
+              },
+            })
+          )
+          if (k === heightCount - 1 && heightCount > 1) {
+            outlineInstances.push(
+              new GeometryInstance({
+                id: `${code}#otop`,
+                geometry: new RectangleOutlineGeometry({
+                  rectangle,
+                  height: h1,
+                }),
+                attributes: {
+                  color: ColorGeometryInstanceAttribute.fromColor(hi ? hiLine : outlineColor),
+                },
+              })
+            )
+          }
+        }
+
+        if (showFaces) {
+          fillInstances.push(
+            new GeometryInstance({
+              id: `${code}#fill${k}`,
+              geometry: new RectangleGeometry({
+                rectangle,
+                height: h0,
+                extrudedHeight: h1,
+                vertexFormat: PerInstanceColorAppearance.VERTEX_FORMAT,
+              }),
+              attributes: {
+                color: ColorGeometryInstanceAttribute.fromColor(hi ? hiFill : faceColor),
+              },
+            })
+          )
+        }
+
+        if (showCode && labels) {
+          labels.add({
+            position: Cartesian3.fromDegrees(cx, cy, h0 + layerH / 2),
+            text: heightCount > 1 ? `${code}\nL${k + 1}` : code,
+            font: "13px IBM Plex Sans, sans-serif",
+            fillColor: Color.WHITE,
+            outlineColor: Color.BLACK,
+            outlineWidth: 3,
+            style: LabelStyle.FILL_AND_OUTLINE,
+            verticalOrigin: VerticalOrigin.CENTER,
+            horizontalOrigin: HorizontalOrigin.CENTER,
+            pixelOffset: new Cartesian2(0, 0),
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            showBackground: true,
+            backgroundColor: Color.BLACK.withAlpha(0.45),
+            backgroundPadding: new Cartesian2(4, 3),
           })
-        )
+        }
+      }
+
+      // Vertical pillars at cell corners (test.html style for multi-layer).
+      if (showOutline && heightCount > 1) {
+        const corners: [number, number][] = [
+          [west, south],
+          [east, south],
+          [east, north],
+          [west, north],
+        ]
+        for (const [lon, lat] of corners) {
+          pillarInstances.push(
+            new GeometryInstance({
+              geometry: new PolylineGeometry({
+                positions: Cartesian3.fromDegreesArrayHeights([
+                  lon, lat, 0,
+                  lon, lat, totalH,
+                ]),
+                width: 1.0,
+                arcType: ArcType.NONE,
+              }),
+            })
+          )
+        }
       }
 
       this.cells.push({ code, west, south, east, north })
     }
 
-    if (outlineInstances.length === 0) return
-
     const lineWidth = Math.min(1.5, this.viewer.scene.maximumAliasedLineWidth)
 
-    this.outlinePrimitive = this.viewer.scene.primitives.add(
-      new Primitive({
-        geometryInstances: outlineInstances,
-        appearance: new PerInstanceColorAppearance({
-          flat: true,
-          renderState: {
-            lineWidth,
-          },
-        }),
-        asynchronous: true,
-        allowPicking: true,
-      })
-    )
+    if (outlineInstances.length > 0) {
+      this.outlinePrimitive = this.viewer.scene.primitives.add(
+        new Primitive({
+          geometryInstances: outlineInstances,
+          appearance: new PerInstanceColorAppearance({
+            flat: true,
+            renderState: { lineWidth },
+          }),
+          asynchronous: true,
+          allowPicking: true,
+        })
+      )
+    }
+
+    if (pillarInstances.length > 0) {
+      this.pillarPrimitive = this.viewer.scene.primitives.add(
+        new Primitive({
+          geometryInstances: pillarInstances,
+          appearance: new PolylineMaterialAppearance({
+            material: Material.fromType("Color", {
+              color: Color.WHITE.withAlpha(0.3),
+            }),
+            translucent: true,
+          }),
+          asynchronous: true,
+          allowPicking: false,
+        })
+      )
+    }
 
     if (fillInstances.length > 0) {
       this.fillPrimitive = this.viewer.scene.primitives.add(
@@ -267,7 +409,7 @@ export class GridLayer {
 
   pickFromId(id: unknown): CellPick | null {
     if (typeof id !== "string") return null
-    const code = id.endsWith("#fill") ? id.slice(0, -5) : id
+    const code = id.replace(/#(fill\d*|o\d*|otop)$/, "")
     const hit = this.cells.find((c) => c.code === code)
     if (!hit) return null
     return {

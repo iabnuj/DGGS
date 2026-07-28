@@ -60,13 +60,26 @@ let selectedCode: string | null = null
 let refreshTimer: number | undefined
 
 const levelInput = document.getElementById("levelInput") as HTMLInputElement
+const heightCountInput = document.getElementById("heightCount") as HTMLInputElement
 const autoLevel = document.getElementById("autoLevel") as HTMLInputElement
+const showOutline = document.getElementById("showOutline") as HTMLInputElement
+const showFaces = document.getElementById("showFaces") as HTMLInputElement
+const showCode = document.getElementById("showCode") as HTMLInputElement
 const refreshBtn = document.getElementById("refreshBtn") as HTMLButtonElement
 const parentBtn = document.getElementById("parentBtn") as HTMLButtonElement
 const childBtn = document.getElementById("childBtn") as HTMLButtonElement
 const statusEl = document.getElementById("status") as HTMLParagraphElement
 const cellInfo = document.getElementById("cellInfo") as HTMLDListElement
 const sourceList = document.getElementById("sourceList") as HTMLUListElement
+
+function syncDrawOptions() {
+  gridLayer.setOptions({
+    showOutline: showOutline.checked,
+    showFaces: showFaces.checked,
+    showCode: showCode.checked,
+    heightCount: Number(heightCountInput.value) || 1,
+  })
+}
 
 function setStatus(text: string) {
   statusEl.textContent = text
@@ -157,6 +170,7 @@ function placeSampleMarkers() {
 }
 
 function refreshGrid() {
+  syncDrawOptions()
   const level = currentLevel()
   const hi = new Set<string>()
   for (const r of sampleRecords) {
@@ -175,10 +189,12 @@ function refreshGrid() {
 
   try {
     const { count, truncated } = gridLayer.refresh(level)
+    const opts = gridLayer.getOptions()
+    const layers = opts.heightCount > 1 ? ` · ${opts.heightCount} 层` : ""
     setStatus(
       truncated
-        ? `视窗过大，已自动降级，当前约 L${levelInput.value} · ${count} 格`
-        : `L${level} · ${count} 格`
+        ? `视窗过大，已自动降级，当前约 L${levelInput.value} · ${count} 格${layers}`
+        : `L${level} · ${count} 格${layers}`
     )
   } catch (err) {
     setStatus(`刷新失败: ${err instanceof Error ? err.message : String(err)}`)
@@ -195,7 +211,11 @@ levelInput.addEventListener("change", () => {
   autoLevel.checked = false
   refreshGrid()
 })
+heightCountInput.addEventListener("change", () => refreshGrid())
 autoLevel.addEventListener("change", () => refreshGrid())
+for (const el of [showOutline, showFaces, showCode]) {
+  el.addEventListener("change", () => refreshGrid())
+}
 
 parentBtn.addEventListener("click", () => {
   if (!selectedCode) return

@@ -101,6 +101,13 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-bottom: 6px;
+}
+
+.toggles {
+  display: grid;
+  gap: 2px;
+  margin: 4px 0 12px;
 }
 
 .btn {
