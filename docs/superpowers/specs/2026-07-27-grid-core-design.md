@@ -31,7 +31,7 @@ DGGS/
 1. 跑通原有正反算测试 ✅  
 2. 增加 parent / children / neighbors / aggregate / coverBBox ✅  
 3. 金样例与往返测试 ✅  
-4. Demo 接入（后续计划）
+4. Demo 接入（Cesium）✅ 基线 — `apps/demo`
 
 实现计划：`docs/superpowers/plans/2026-07-27-grid-core-algebra.md`
 

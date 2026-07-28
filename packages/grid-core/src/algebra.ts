@@ -1,5 +1,6 @@
 import * as geosot from "./geosot"
-import { idFromXY } from "./xy"
+import * as morton from "./morton"
+import { code2decimal, gridSize } from "./utils"
 
 export function parent(code: string): string | null {
   const { id, level } = geosot.toId(code)
@@ -24,12 +25,33 @@ export function children(code: string): [string, string, string, string] {
   ) as [string, string, string, string]
 }
 
+/** Cell interior point + size; sign bit selects which side of the truncated corner is inside. */
+function cellInterior(code: string): {
+  lng: number
+  lat: number
+  level: number
+  size: number
+} {
+  const { id, level } = geosot.toId(code)
+  const size = gridSize[level]!
+  const { l, b } = morton.inverseMagicbits(id)
+  const shift = BigInt(32 - level)
+  const l0 = (BigInt(l) >> shift) << shift
+  const b0 = (BigInt(b) >> shift) << shift
+  const lng0 = code2decimal(l0)
+  const lat0 = code2decimal(b0)
+  const lng = (l0 >> 31n) === 0n ? lng0 + size / 2 : lng0 - size / 2
+  const lat = (b0 >> 31n) === 0n ? lat0 + size / 2 : lat0 - size / 2
+  return { lng, lat, level, size }
+}
+
 export function neighbors(
   code: string,
   options?: { diagonal?: boolean }
 ): string[] {
-  const { id, level } = geosot.toId(code)
-  const { x, y } = geosot.xyFromId(id, level)
+  // Geographic ±cellSize adjacency (not raw x±1): GeoSOT packs a sign bit into
+  // DMS fields, so signed xy is negative in W/S hemispheres and discontinuous at 0.
+  const { lng, lat, level, size } = cellInterior(code)
   const deltas = options?.diagonal
     ? [
         [-1, -1], [0, -1], [1, -1],
@@ -41,10 +63,10 @@ export function neighbors(
       ]
   const out: string[] = []
   for (const [dx, dy] of deltas) {
-    const nx = x + dx
-    const ny = y + dy
-    if (nx < 0 || ny < 0) continue
-    out.push(geosot.toCode(idFromXY(nx, ny, level), level))
+    const nLng = lng + dx * size
+    const nLat = lat + dy * size
+    if (nLat < -90 || nLat > 90 || nLng < -180 || nLng > 180) continue
+    out.push(geosot.locToQuaternary(nLng, nLat, level))
   }
   return out
 }

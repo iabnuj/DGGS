@@ -1,0 +1,12 @@
+{
+  "name": "dggs",
+  "private": true,
+  "scripts": {
+    "demo": "pnpm --filter @dggs/demo dev",
+    "build:core": "pnpm --filter @dggs/grid-core build-fast",
+    "test:core": "pnpm --filter @dggs/grid-core test"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

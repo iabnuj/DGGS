@@ -34,8 +34,11 @@ export function locToQuaternary(lng: number, lat: number, level: number) {
  */
 export function xyFromId(id: bigint, level: number) {
     const { l, b } = morton.inverseMagicbits(id);
-    const x = l >> (32 - level)
-    const y = b >> (32 - level)
+    const shift = 32 - level
+    // Unsigned shift: GeoSOT packs a sign bit into DMS fields; JS `>>` would
+    // turn western/southern indexes negative and break cover / bbox.
+    const x = (l >>> 0) >>> shift
+    const y = (b >>> 0) >>> shift
     return { x, y }
 }
 /**
@@ -67,9 +70,11 @@ export function xyFromCode(code: string) {
  * @returns 瓦片的经纬度
  */
 export function cornerFromXY(x: number, y: number, level: number) {
-    const cornerLng = code2decimal(BigInt(x << 32 - level))
-    const cornerLat = code2decimal(BigInt(y << 32 - level))
-    return { lng: cornerLng, lat: cornerLat }
+    const shift = BigInt(32 - level)
+    // Rebuild 32-bit DMS fields via BigInt so the sign bit survives (JS `<<` is 32-bit signed).
+    const l = (BigInt(x >>> 0) << shift) & 0xffffffffn
+    const b = (BigInt(y >>> 0) << shift) & 0xffffffffn
+    return { lng: code2decimal(l), lat: code2decimal(b) }
 }
 /**
  * 瓦片id转瓦片角点经纬度

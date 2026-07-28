@@ -36,6 +36,27 @@ test("diagonal neighbors length 8", () => {
   expect(algebra.neighbors(code, { diagonal: true })).toHaveLength(8)
 })
 
+test("neighbors work in western / southern hemispheres", () => {
+  const code = geosot.locToQuaternary(-100, -40, 10)
+  const n4 = algebra.neighbors(code)
+  expect(n4).toHaveLength(4)
+  for (const n of n4) {
+    expect(algebra.neighbors(n)).toContain(code)
+  }
+  expect(algebra.neighbors(code, { diagonal: true })).toHaveLength(8)
+})
+
+test("neighbors are complete near prime meridian / equator", () => {
+  const code = geosot.locToQuaternary(0.001, 0.001, 15)
+  const n4 = algebra.neighbors(code)
+  expect(n4).toHaveLength(4)
+  for (const n of n4) {
+    expect(algebra.neighbors(n)).toContain(code)
+  }
+  // western neighbor crosses into the western hemisphere (GeoSOT G1*)
+  expect(n4.some((n) => n.startsWith("G1"))).toBe(true)
+})
+
 test("aggregate rolls fine codes to coarse unique parents", () => {
   const a = geosot.locToQuaternary(116.315228, 39.91028, 18)
   const b = geosot.locToQuaternary(116.316, 39.911, 18)
