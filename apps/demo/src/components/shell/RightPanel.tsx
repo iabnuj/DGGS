@@ -5,23 +5,29 @@ import { useAppStore } from "@/state/store"
 import { Button } from "@/components/ui/button"
 import { getWarehouse } from "@/data/warehouseBoot"
 import { flyToCode } from "@/map/useCesiumMap"
+import {
+  mergeCellFeatureHits,
+  type CellFeatureHit,
+} from "@/data/cellFeatureHits"
 import type { GridCellRecord } from "@dggs/grid-ingest"
 
 export function RightPanel() {
   const open = useAppStore((s) => s.rightPanelOpen)
   const gridSet = useAppStore((s) => s.gridSet)
   const analysis = useAppStore((s) => s.analysisResult)
-  const [records, setRecords] = useState<GridCellRecord[]>([])
+  const [hits, setHits] = useState<CellFeatureHit[]>([])
 
   useEffect(() => {
     if (!gridSet || gridSet.from !== "pick" || gridSet.codes.length !== 1) {
-      setRecords([])
+      setHits([])
       return
     }
     const code = gridSet.codes[0]!
     void getWarehouse()
       .getByCell(code)
-      .then((rows) => setRecords(rows as GridCellRecord[]))
+      .then((rows) => {
+        setHits(mergeCellFeatureHits(code, rows as GridCellRecord[]))
+      })
   }, [gridSet])
 
   if (!open) return null
@@ -159,22 +165,36 @@ export function RightPanel() {
               </dd>
             </div>
           </dl>
-          <div className="flex flex-wrap gap-1.5">
-            {records.length === 0 ? (
+          <div className="flex max-h-[40vh] flex-col gap-1.5 overflow-y-auto">
+            {hits.length === 0 ? (
               <span className="text-xs text-muted-foreground">暂无融合属性</span>
             ) : (
-              records.map((r, i) => (
-                <span
-                  key={`${r.source}-${i}`}
-                  className="rounded-full border border-border/70 bg-muted/40 px-2 py-0.5 text-[11px]"
-                >
-                  {r.label || r.source}
-                  {Object.entries(r.attrs)
-                    .slice(0, 2)
-                    .map(([k, v]) => ` · ${k} ${v}`)
-                    .join("")}
-                </span>
-              ))
+              <>
+                <p className="text-[10px] text-muted-foreground">
+                  本格关联 {hits.length} 条要素（入格 + 几何相交）
+                </p>
+                {hits.map((h, i) => (
+                  <div
+                    key={`${h.source}-${h.featureId}-${i}`}
+                    className="rounded-md border border-border/70 bg-muted/40 px-2 py-1.5 text-[11px] leading-snug"
+                  >
+                    <p className="truncate font-medium text-foreground/90">
+                      {h.label || h.source}
+                      <span className="ml-1 font-normal text-muted-foreground">
+                        #{h.featureId}
+                      </span>
+                    </p>
+                    <p className="truncate text-muted-foreground">
+                      {h.source}
+                      {Object.entries(h.attrs)
+                        .slice(0, 3)
+                        .map(([k, v]) => ` · ${k} ${v}`)
+                        .join("")}
+                      {h.fromGeometry && !h.record ? " · 几何相交" : ""}
+                    </p>
+                  </div>
+                ))}
+              </>
             )}
           </div>
         </>

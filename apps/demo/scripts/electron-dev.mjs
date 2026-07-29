@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process"
+import { spawn, spawnSync } from "node:child_process"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { createRequire } from "node:module"
@@ -9,6 +9,7 @@ const require = createRequire(import.meta.url)
 const electronPath = require("electron")
 
 const demoRoot = path.resolve(__dirname, "..")
+const repoRoot = path.resolve(demoRoot, "../..")
 const viteBin = path.resolve(demoRoot, "node_modules/vite/bin/vite.js")
 const mainEntry = path.join(demoRoot, "electron/main.mjs")
 
@@ -32,6 +33,19 @@ function waitForVite(timeoutMs = 120_000) {
   })
 }
 
+function buildPackages() {
+  // Electron main loads packages/grid-store/dist — rebuild so schema migrations ship.
+  for (const pkg of ["@dggs/grid-ingest", "@dggs/grid-store"]) {
+    const s = spawnSync("pnpm", ["--filter", pkg, "build"], {
+      cwd: repoRoot,
+      stdio: "inherit",
+      shell: true,
+      env: process.env,
+    })
+    if (s.status !== 0) throw new Error(`build ${pkg} failed`)
+  }
+}
+
 const vite = spawn(process.execPath, [viteBin, "--host", "127.0.0.1", "--port", "5173", "--strictPort"], {
   cwd: demoRoot,
   stdio: "inherit",
@@ -39,6 +53,7 @@ const vite = spawn(process.execPath, [viteBin, "--host", "127.0.0.1", "--port", 
 })
 
 async function main() {
+  buildPackages()
   await waitForVite()
   const child = spawn(electronPath, [mainEntry], {
     cwd: demoRoot,

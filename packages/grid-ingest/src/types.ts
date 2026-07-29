@@ -5,7 +5,10 @@ export type Attrs = Record<string, AttrValue>
 /**
  * One row in the “grid warehouse”: geometry resolved to a cell id,
  * plus business source / time / attrs. Primary key conceptually:
- * (gridId, level, time?, source).
+ * (gridId, level, time?, source, featureId?)
+ *
+ * `featureId` lets multiple features of the same source share one cell
+ * (e.g. several OSM ways through the same grid).
  */
 export type GridCellRecord = {
   gridId: string
@@ -14,6 +17,11 @@ export type GridCellRecord = {
   time?: string
   /** Source id, e.g. "recon" | "weather" | "alert". */
   source: string
+  /**
+   * Stable id within `source` (e.g. osm_id). Empty/undefined = single
+   * occupancy per cell+source (legacy behavior).
+   */
+  featureId?: string
   label?: string
   attrs: Attrs
 }
@@ -30,6 +38,7 @@ export type IngestMeta = {
   source: string
   time?: string
   label?: string
+  featureId?: string
   attrs?: Attrs
 }
 

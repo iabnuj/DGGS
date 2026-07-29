@@ -191,8 +191,12 @@ export class GridLayer {
   /** Selection/buffer overlay — updated independently so the base mesh never flashes. */
   private hiOutlinePrimitive: AnyPrimitive | undefined
   private hiFillPrimitive: AnyPrimitive | undefined
+  /** Visible warehouse data layers (roads/buildings/…) — independent of pick highlights. */
+  private dataOutlinePrimitive: AnyPrimitive | undefined
+  private dataFillPrimitive: AnyPrimitive | undefined
   private cells: CellMeta[] = []
   private highlightCodes = new Set<string>()
+  private dataCodes = new Set<string>()
   private options: GridDrawOptions = { ...DEFAULT_OPTIONS }
   /** Skip full mesh rebuild when camera / style signature unchanged. */
   private lastViewKey = ""
@@ -325,6 +329,7 @@ export class GridLayer {
 
   clear() {
     this.clearHighlightOverlay()
+    this.clearDataOverlay()
     if (this.outlinePrimitive) {
       this.viewer.scene.primitives.remove(this.outlinePrimitive)
       this.outlinePrimitive = undefined
@@ -355,11 +360,22 @@ export class GridLayer {
     }
   }
 
+  private clearDataOverlay() {
+    if (this.dataOutlinePrimitive) {
+      this.viewer.scene.primitives.remove(this.dataOutlinePrimitive)
+      this.dataOutlinePrimitive = undefined
+    }
+    if (this.dataFillPrimitive) {
+      this.viewer.scene.primitives.remove(this.dataFillPrimitive)
+      this.dataFillPrimitive = undefined
+    }
+  }
+
   setHighlights(codes: Iterable<string>) {
     this.highlightCodes = new Set(codes)
   }
 
-  /** Update selection overlay only — base grid mesh stays untouched. */
+  /** Update selection / analysis overlay only. */
   applyHighlights(codes: Iterable<string>) {
     const next = new Set(codes)
     if (sameCodeSet(this.highlightCodes, next)) return
@@ -367,26 +383,69 @@ export class GridLayer {
     this.redrawHighlightOverlay()
   }
 
+  /** Imported data layers (eye toggle). Independent of pick/analysis highlights. */
+  applyDataOverlay(codes: Iterable<string>, force = false) {
+    const next = new Set(codes)
+    if (!force && sameCodeSet(this.dataCodes, next)) return
+    this.dataCodes = next
+    this.redrawDataOverlay()
+  }
+
   private redrawHighlightOverlay() {
     this.clearHighlightOverlay()
-    if (this.viewer.isDestroyed() || this.highlightCodes.size === 0) return
+    const painted = this.paintCellOverlay(this.highlightCodes, {
+      idPrefix: "hi",
+      lineCss: this.options.highlightColor,
+      lineAlpha: 0.98,
+      fillAlpha: 0.35,
+      width: 3,
+    })
+    this.hiOutlinePrimitive = painted.outline
+    this.hiFillPrimitive = painted.fill
+  }
 
-    const hiLine = colorWithOpacity(
-      this.options.highlightColor,
-      0.98,
+  private redrawDataOverlay() {
+    this.clearDataOverlay()
+    const painted = this.paintCellOverlay(this.dataCodes, {
+      idPrefix: "data",
+      lineCss: "#38bdf8",
+      lineAlpha: 0.95,
+      fillAlpha: 0.32,
+      width: 2.5,
+    })
+    this.dataOutlinePrimitive = painted.outline
+    this.dataFillPrimitive = painted.fill
+  }
+
+  private paintCellOverlay(
+    codes: Set<string>,
+    style: {
+      idPrefix: string
+      lineCss: string
+      lineAlpha: number
+      fillAlpha: number
+      width: number
+    }
+  ): { outline?: AnyPrimitive; fill?: AnyPrimitive } {
+    if (this.viewer.isDestroyed() || codes.size === 0) return {}
+
+    const lineColor = colorWithOpacity(
+      style.lineCss,
+      style.lineAlpha,
       this.options.opacity
     )
-    const hiFill = colorWithOpacity(
-      this.options.highlightColor,
-      0.35,
+    const fillColor = colorWithOpacity(
+      style.lineCss,
+      style.fillAlpha,
       this.options.opacity
     )
     const clamp = this.options.clampToGround
     const heightCount = this.options.heightCount
     const outlineInstances: GeometryInstance[] = []
     const fillInstances: GeometryInstance[] = []
+    const prefix = style.idPrefix
 
-    for (const code of this.highlightCodes) {
+    for (const code of codes) {
       const b = geosot.bboxFromCode(code)
       const west = clampLon(b.west)
       const east = clampLon(b.east)
@@ -398,7 +457,7 @@ export class GridLayer {
       if (clamp) {
         outlineInstances.push(
           new GeometryInstance({
-            id: `hi:${code}`,
+            id: `${prefix}:${code}`,
             geometry: new GroundPolylineGeometry({
               positions: Cartesian3.fromDegreesArray([
                 west,
@@ -412,22 +471,22 @@ export class GridLayer {
                 west,
                 south,
               ]),
-              width: 3.0,
+              width: style.width,
             }),
             attributes: {
-              color: ColorGeometryInstanceAttribute.fromColor(hiLine),
+              color: ColorGeometryInstanceAttribute.fromColor(lineColor),
             },
           })
         )
         fillInstances.push(
           new GeometryInstance({
-            id: `hi:${code}#fill`,
+            id: `${prefix}:${code}#fill`,
             geometry: new RectangleGeometry({
               rectangle,
               vertexFormat: PerInstanceColorAppearance.VERTEX_FORMAT,
             }),
             attributes: {
-              color: ColorGeometryInstanceAttribute.fromColor(hiFill),
+              color: ColorGeometryInstanceAttribute.fromColor(fillColor),
             },
           })
         )
@@ -437,19 +496,19 @@ export class GridLayer {
           const h0 = k * layerH
           outlineInstances.push(
             new GeometryInstance({
-              id: `hi:${code}#o${k}`,
+              id: `${prefix}:${code}#o${k}`,
               geometry: new RectangleOutlineGeometry({
                 rectangle,
                 height: h0,
               }),
               attributes: {
-                color: ColorGeometryInstanceAttribute.fromColor(hiLine),
+                color: ColorGeometryInstanceAttribute.fromColor(lineColor),
               },
             })
           )
           fillInstances.push(
             new GeometryInstance({
-              id: `hi:${code}#fill${k}`,
+              id: `${prefix}:${code}#fill${k}`,
               geometry: new RectangleGeometry({
                 rectangle,
                 height: h0,
@@ -457,7 +516,7 @@ export class GridLayer {
                 vertexFormat: PerInstanceColorAppearance.VERTEX_FORMAT,
               }),
               attributes: {
-                color: ColorGeometryInstanceAttribute.fromColor(hiFill),
+                color: ColorGeometryInstanceAttribute.fromColor(fillColor),
               },
             })
           )
@@ -465,12 +524,13 @@ export class GridLayer {
       }
     }
 
-    // Sync build for small overlays so pick/buffer feels instant with no base flash.
-    const async = this.highlightCodes.size > 64
+    const async = codes.size > 64
+    let outline: AnyPrimitive | undefined
+    let fill: AnyPrimitive | undefined
 
     if (outlineInstances.length > 0) {
       if (clamp) {
-        this.hiOutlinePrimitive = this.viewer.scene.primitives.add(
+        outline = this.viewer.scene.primitives.add(
           new GroundPolylinePrimitive({
             geometryInstances: outlineInstances,
             appearance: new PolylineColorAppearance(),
@@ -478,8 +538,11 @@ export class GridLayer {
           })
         )
       } else {
-        const lineWidth = Math.min(2.5, this.viewer.scene.maximumAliasedLineWidth)
-        this.hiOutlinePrimitive = this.viewer.scene.primitives.add(
+        const lineWidth = Math.min(
+          style.width,
+          this.viewer.scene.maximumAliasedLineWidth
+        )
+        outline = this.viewer.scene.primitives.add(
           new Primitive({
             geometryInstances: outlineInstances,
             appearance: new PerInstanceColorAppearance({
@@ -495,7 +558,7 @@ export class GridLayer {
 
     if (fillInstances.length > 0) {
       if (clamp) {
-        this.hiFillPrimitive = this.viewer.scene.primitives.add(
+        fill = this.viewer.scene.primitives.add(
           new GroundPrimitive({
             geometryInstances: fillInstances,
             appearance: new PerInstanceColorAppearance({
@@ -507,7 +570,7 @@ export class GridLayer {
           })
         )
       } else {
-        this.hiFillPrimitive = this.viewer.scene.primitives.add(
+        fill = this.viewer.scene.primitives.add(
           new Primitive({
             geometryInstances: fillInstances,
             appearance: new PerInstanceColorAppearance({
@@ -520,6 +583,8 @@ export class GridLayer {
         )
       }
     }
+
+    return { outline, fill }
   }
 
   private collectCodes(bboxes: BBox[], level: number): {
@@ -598,13 +663,16 @@ export class GridLayer {
 
   draw(codes: string[]) {
     this.clear()
-    if (codes.length === 0) return
     if (this.viewer.isDestroyed()) return
 
     const { showOutline, showFaces, showCode, heightCount, clampToGround } =
       this.options
-    if (!showOutline && !showFaces && !showCode) {
+
+    // Empty / style-off mesh still must restore pick + data overlays —
+    // clear() removed their primitives but codes remain in memory.
+    if (codes.length === 0 || (!showOutline && !showFaces && !showCode)) {
       this.redrawHighlightOverlay()
+      this.redrawDataOverlay()
       return
     }
 
@@ -615,6 +683,7 @@ export class GridLayer {
       this.drawEllipsoid(codes, showOutline, showFaces, showCode, heightCount)
     }
     this.redrawHighlightOverlay()
+    this.redrawDataOverlay()
   }
 
   private drawClamped(

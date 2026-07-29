@@ -3,7 +3,7 @@ import type { GridCellRecord, PointInput } from "./types"
 
 /** Encode a WGS84 point into one GridCellRecord. */
 export function ingestPoint(input: PointInput): GridCellRecord {
-  const { lon, lat, level, source, time, label, attrs } = input
+  const { lon, lat, level, source, time, label, featureId, attrs } = input
   if (!Number.isFinite(lon) || !Number.isFinite(lat)) {
     throw new Error(`ingestPoint: invalid lon/lat (${lon}, ${lat})`)
   }
@@ -19,6 +19,7 @@ export function ingestPoint(input: PointInput): GridCellRecord {
     level,
     time,
     source,
+    featureId,
     label,
     attrs: attrs ?? {},
   }

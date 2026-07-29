@@ -53,10 +53,27 @@ describe("MemoryWarehouse", () => {
     expect(hits).toHaveLength(1)
   })
 
-  it("filters list by source", async () => {
-    const weather = await store.list({ source: "weather" })
-    expect(weather.every((r) => r.source === "weather")).toBe(true)
-    expect(weather.length).toBe(1)
+  it("keeps multiple features in the same cell when featureId differs", async () => {
+    await store.clear()
+    const a = ingestPoint({
+      ...BJ,
+      level: 12,
+      source: "roads",
+      featureId: "100",
+      attrs: { osm_id: 100 },
+    })
+    const b = ingestPoint({
+      ...BJ,
+      level: 12,
+      source: "roads",
+      featureId: "200",
+      attrs: { osm_id: 200 },
+    })
+    expect(a.gridId).toBe(b.gridId)
+    await store.put([a, b])
+    const hits = await store.getByCell(a.gridId)
+    expect(hits).toHaveLength(2)
+    expect(hits.map((h) => h.featureId).sort()).toEqual(["100", "200"])
   })
 })
 

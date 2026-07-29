@@ -2,7 +2,7 @@ import { app, BrowserWindow, Menu, dialog, ipcMain } from "electron"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import fs from "node:fs/promises"
-import { appendFileSync } from "node:fs"
+import { existsSync, appendFileSync } from "node:fs"
 import { createRequire } from "node:module"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -21,6 +21,27 @@ function log(...args) {
     /* ignore */
   }
   console.log(...args)
+}
+
+/**
+ * Bundled sample data directory (packaged via electron-builder extraResources).
+ * Dev: apps/demo/resources/sample-data
+ * Prod: <Resources>/sample-data
+ */
+function getSampleDataDir() {
+  if (isDev) {
+    return path.resolve(__dirname, "../resources/sample-data")
+  }
+  return path.join(process.resourcesPath, "sample-data")
+}
+
+/** Prefer hejing/ if present; otherwise sample-data root. */
+function getImportDefaultPath() {
+  const root = getSampleDataDir()
+  const hejing = path.join(root, "hejing")
+  if (existsSync(hejing)) return hejing
+  if (existsSync(root)) return root
+  return undefined
 }
 
 /** @type {import('@dggs/grid-store/node').SqliteWarehouse | null} */
@@ -96,7 +117,7 @@ function createMenu() {
               type: "info",
               title: "关于",
               message: "DGGS Demo",
-              detail: `版本 ${app.getVersion()}\nGeoSOT + Cesium 桌面演示\n本地仓：SQLite`,
+              detail: `版本 ${app.getVersion()}\nGeoSOT + Cesium 桌面演示\n本地仓：SQLite\n样例数据：${getSampleDataDir()}`,
             })
           },
         },
@@ -109,7 +130,8 @@ function createMenu() {
 async function handleOpenJson() {
   const result = await dialog.showOpenDialog(mainWindow, {
     title: "打开网格数据 JSON",
-    filters: [{ name: "JSON", extensions: ["json"] }],
+    defaultPath: getImportDefaultPath(),
+    filters: [{ name: "JSON", extensions: ["json", "geojson"] }],
     properties: ["openFile"],
   })
   if (result.canceled || !result.filePaths[0]) return
@@ -184,6 +206,7 @@ function registerIpc() {
   ipcMain.handle("desktop:pickImportFile", async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
       title: "导入 GeoJSON / JSON",
+      defaultPath: getImportDefaultPath(),
       filters: [
         { name: "GeoJSON / JSON", extensions: ["geojson", "json"] },
       ],
@@ -194,6 +217,7 @@ function registerIpc() {
     const text = await fs.readFile(filePath, "utf8")
     return { name: path.basename(filePath), text }
   })
+  ipcMain.handle("desktop:getSampleDataDir", async () => getSampleDataDir())
 }
 
 function createWindow() {
@@ -240,8 +264,12 @@ app.whenReady().then(async () => {
   try {
     await ensureWarehouse()
     log("[dggs] SqliteWarehouse ready at", path.join(app.getPath("userData"), "dggs-demo.sqlite"))
+    log("[dggs] sample data dir", getSampleDataDir())
   } catch (err) {
-    log("[dggs] warehouse init failed", err instanceof Error ? err.stack || err.message : String(err))
+    log(
+      "[dggs] warehouse init failed",
+      err instanceof Error ? err.stack || err.message : String(err)
+    )
     dialog.showErrorBox(
       "数据仓初始化失败",
       err instanceof Error ? err.message : String(err)

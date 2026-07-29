@@ -6,7 +6,7 @@ import type { BBoxInput, GridCellRecord } from "./types"
  * (same attrs/source/time hung on every covered cell).
  */
 export function ingestBBox(input: BBoxInput): GridCellRecord[] {
-  const { bbox, level, source, time, label, attrs } = input
+  const { bbox, level, source, time, label, featureId, attrs } = input
   if (!source) {
     throw new Error("ingestBBox: source is required")
   }
@@ -27,6 +27,7 @@ export function ingestBBox(input: BBoxInput): GridCellRecord[] {
     level,
     time,
     source,
+    featureId,
     label,
     attrs: { ...shared },
   }))

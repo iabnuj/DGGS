@@ -3,6 +3,7 @@ import {
   ingestPoint,
   type GridCellRecord,
 } from "@dggs/grid-ingest"
+import { useAppStore } from "@/state/store"
 
 type Feature = {
   type: "Feature"
@@ -38,6 +39,19 @@ function attrsFromProps(props: Record<string, unknown> | null | undefined) {
   return attrs
 }
 
+function featureIdFromProps(
+  props: Record<string, unknown> | null | undefined,
+  index: number
+): string {
+  if (props) {
+    for (const key of ["osm_id", "id", "ID", "fid"]) {
+      const v = props[key]
+      if (typeof v === "string" || typeof v === "number") return String(v)
+    }
+  }
+  return `f${index}`
+}
+
 function asPairs(coords: unknown): number[][] {
   if (!Array.isArray(coords)) return []
   return coords.filter(
@@ -50,7 +64,8 @@ function lineSamples(
   coords: number[][],
   level: number,
   source: string,
-  label?: string,
+  label: string | undefined,
+  featureId: string,
   attrs: Record<string, string | number | boolean> = {}
 ) {
   const out: GridCellRecord[] = []
@@ -62,7 +77,15 @@ function lineSamples(
       const t = s / 16
       const lon = lon0! + (lon1! - lon0!) * t
       const lat = lat0! + (lat1! - lat0!) * t
-      const rec = ingestPoint({ lon, lat, level, source, label, attrs })
+      const rec = ingestPoint({
+        lon,
+        lat,
+        level,
+        source,
+        label,
+        featureId,
+        attrs,
+      })
       if (!seen.has(rec.gridId)) {
         seen.add(rec.gridId)
         out.push(rec)
@@ -77,6 +100,7 @@ function coverRing(
   level: number,
   source: string,
   label: string,
+  featureId: string,
   attrs: Record<string, string | number | boolean>
 ): GridCellRecord[] {
   if (ring.length < 3) return []
@@ -96,6 +120,7 @@ function coverRing(
     level,
     source,
     label,
+    featureId,
     attrs,
   })
 }
@@ -116,17 +141,18 @@ export function ingestGeoJsonText(
       : []
 
   const records: GridCellRecord[] = []
-  for (const f of features) {
+  features.forEach((f, index) => {
     const g = f.geometry
-    if (!g) continue
+    if (!g) return
     const attrs = attrsFromProps(f.properties)
+    const featureId = featureIdFromProps(f.properties, index)
     const name =
       label ??
       (typeof f.properties?.name === "string" ? f.properties.name : source)
 
     if (g.type === "Point") {
       const coords = g.coordinates
-      if (!Array.isArray(coords) || typeof coords[0] !== "number") continue
+      if (!Array.isArray(coords) || typeof coords[0] !== "number") return
       records.push(
         ingestPoint({
           lon: coords[0],
@@ -134,6 +160,7 @@ export function ingestGeoJsonText(
           level,
           source,
           label: name,
+          featureId,
           attrs,
         })
       )
@@ -146,32 +173,44 @@ export function ingestGeoJsonText(
             level,
             source,
             label: name,
+            featureId,
             attrs,
           })
         )
       }
     } else if (g.type === "LineString") {
-      records.push(...lineSamples(asPairs(g.coordinates), level, source, name, attrs))
+      records.push(
+        ...lineSamples(asPairs(g.coordinates), level, source, name, featureId, attrs)
+      )
     } else if (g.type === "MultiLineString") {
-      if (!Array.isArray(g.coordinates)) continue
+      if (!Array.isArray(g.coordinates)) return
       for (const line of g.coordinates) {
-        records.push(...lineSamples(asPairs(line), level, source, name, attrs))
+        records.push(
+          ...lineSamples(asPairs(line), level, source, name, featureId, attrs)
+        )
       }
     } else if (g.type === "Polygon") {
-      if (!Array.isArray(g.coordinates)) continue
-      records.push(...coverRing(asPairs(g.coordinates[0]), level, source, name, attrs))
+      if (!Array.isArray(g.coordinates)) return
+      records.push(
+        ...coverRing(asPairs(g.coordinates[0]), level, source, name, featureId, attrs)
+      )
     } else if (g.type === "MultiPolygon") {
-      if (!Array.isArray(g.coordinates)) continue
+      if (!Array.isArray(g.coordinates)) return
       for (const poly of g.coordinates) {
         if (!Array.isArray(poly)) continue
-        records.push(...coverRing(asPairs(poly[0]), level, source, name, attrs))
+        records.push(
+          ...coverRing(asPairs(poly[0]), level, source, name, featureId, attrs)
+        )
       }
     }
-  }
+  })
   return records
 }
 
 export function layersFromRecords(records: GridCellRecord[]) {
+  const prev = new Map(
+    useAppStore.getState().layers.map((l) => [l.id, l] as const)
+  )
   const bySource = new Map<string, GridCellRecord[]>()
   for (const r of records) {
     const list = bySource.get(r.source) ?? []
@@ -180,6 +219,7 @@ export function layersFromRecords(records: GridCellRecord[]) {
   }
   return [...bySource.entries()].map(([source, rows]) => {
     const levels = rows.map((r) => r.level)
+    const old = prev.get(source)
     return {
       id: source,
       name: rows[0]?.label ?? source,
@@ -187,7 +227,8 @@ export function layersFromRecords(records: GridCellRecord[]) {
       count: new Set(rows.map((r) => r.gridId)).size,
       levelMin: Math.min(...levels),
       levelMax: Math.max(...levels),
-      visible: true,
+      visible: old?.visible ?? true,
+      featuresVisible: old?.featuresVisible ?? false,
       source,
     }
   })

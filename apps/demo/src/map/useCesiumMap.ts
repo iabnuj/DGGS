@@ -10,6 +10,7 @@ import {
 } from "cesium"
 import { geosot } from "@dggs/grid-core"
 import { GridLayer } from "@/grid/gridLayer"
+import { GisFeatureLayer } from "@/map/gisFeatureLayer"
 import { levelFromHeight } from "@/grid/levelFromHeight"
 import { createViewer } from "@/map/createViewer"
 import { applyBasemap, applyAdminOverlay, applyLighting, applyTerrain } from "@/map/basemap"
@@ -21,10 +22,11 @@ import {
 } from "@/tools/drawSession"
 import { lineToGridCodes, polygonToGridCodes } from "@/tools/geometryToGrid"
 import {
-  ensureSampleData,
+  bootWarehouse,
   getWarehouse,
   watchDesktopDataChanged,
 } from "@/data/warehouseBoot"
+import { loadFeatureStoreFromLocalStorage } from "@/data/featureGeometryStore"
 import { runAnalysis } from "@/analysis"
 import type { GridCellRecord } from "@dggs/grid-ingest"
 
@@ -34,6 +36,10 @@ export type MapRuntime = {
   refresh: (force?: boolean) => void
   /** Update pick/buffer highlights without rebuilding the viewport mesh. */
   applyHighlights: () => void
+  /** Update imported data-layer overlay (eye toggles). */
+  applyDataOverlay: (force?: boolean) => void
+  /** Draw/hide original GIS feature geometries. */
+  applyGisFeatures: () => void
 }
 
 let runtime: MapRuntime | null = null
@@ -111,6 +117,8 @@ export function useCesiumMap(containerId = "cesiumContainer") {
     let cancelled = false
     const viewer = createViewer(el)
     const gridLayer = new GridLayer(viewer)
+    const gisLayer = new GisFeatureLayer(viewer)
+    loadFeatureStoreFromLocalStorage()
 
     const syncHighlights = () => {
       const s = useAppStore.getState()
@@ -132,9 +140,23 @@ export function useCesiumMap(containerId = "cesiumContainer") {
       gridLayer.applyHighlights(syncHighlights())
     }
 
+    const applyDataOverlay = (force = false) => {
+      if (cancelled || viewer.isDestroyed()) return
+      gridLayer.applyDataOverlay(useAppStore.getState().dataOverlayCodes, force)
+    }
+
+    const applyGisFeatures = () => {
+      if (cancelled || viewer.isDestroyed()) return
+      gisLayer.sync(useAppStore.getState().layers)
+    }
+
     const refresh = (force = false) => {
       if (cancelled || viewer.isDestroyed()) return
       const s = useAppStore.getState()
+
+      // Keep GridLayer.dataCodes in sync with Zustand (eye toggles write store first).
+      gridLayer.applyDataOverlay(s.dataOverlayCodes, false)
+
       if (!s.gridVisible) {
         gridLayer.draw([])
         gridLayer.setHighlights([])
@@ -164,7 +186,14 @@ export function useCesiumMap(containerId = "cesiumContainer") {
           force,
           highlights: syncHighlights(),
         })
-        if (skipped) return
+        if (skipped) {
+          // Skipped mesh rebuild still needs data overlay if eye just toggled.
+          gridLayer.applyDataOverlay(
+            useAppStore.getState().dataOverlayCodes,
+            false
+          )
+          return
+        }
         if (s.gridCount !== count) useAppStore.getState().setGridCount(count)
         const text = truncated
           ? `视窗过大，已降级 · L${level} · ${count} 格`
@@ -179,7 +208,14 @@ export function useCesiumMap(containerId = "cesiumContainer") {
       }
     }
 
-    runtime = { viewer, gridLayer, refresh, applyHighlights }
+    runtime = {
+      viewer,
+      gridLayer,
+      refresh,
+      applyHighlights,
+      applyDataOverlay,
+      applyGisFeatures,
+    }
 
     let refreshTimer: number | undefined
     const scheduleRefresh = () => {
@@ -343,13 +379,14 @@ export function useCesiumMap(containerId = "cesiumContainer") {
     }
     viewer.clock.onTick.addEventListener(onTick)
 
-    void ensureSampleData().then(() => {
+    void bootWarehouse().then(() => {
       if (cancelled || viewer.isDestroyed()) return
       refresh()
+      applyGisFeatures()
     })
 
     const unwatch = watchDesktopDataChanged(() => {
-      void ensureSampleData().then(() => {
+      void bootWarehouse().then(() => {
         if (cancelled || viewer.isDestroyed()) return
         useAppStore.getState().setStatusText("数据已更新")
         refresh()
@@ -367,6 +404,7 @@ export function useCesiumMap(containerId = "cesiumContainer") {
       clearDraw()
       handler.destroy()
       viewer.clock.onTick.removeEventListener(onTick)
+      gisLayer.clearAll()
       if (!viewer.isDestroyed()) viewer.destroy()
       if (runtime?.viewer === viewer) runtime = null
       readyRef.current = false

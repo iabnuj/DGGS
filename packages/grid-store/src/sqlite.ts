@@ -9,6 +9,7 @@ type Row = {
   level: number
   time: string
   source: string
+  feature_id: string
   label: string | null
   attrs: string
 }
@@ -21,23 +22,62 @@ export class SqliteWarehouse implements GridWarehouse {
 
   constructor(dbPath: string) {
     this.db = new Database(dbPath)
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS grid_records (
-        grid_id TEXT NOT NULL,
-        level INTEGER NOT NULL,
-        time TEXT NOT NULL DEFAULT '',
-        source TEXT NOT NULL,
-        label TEXT,
-        attrs TEXT NOT NULL,
-        PRIMARY KEY (grid_id, level, time, source)
-      );
-      CREATE INDEX IF NOT EXISTS idx_grid_records_grid_id
-        ON grid_records(grid_id);
-    `)
+    this.ensureSchema()
   }
 
   close(): void {
     this.db.close()
+  }
+
+  private ensureSchema() {
+    const exists = this.db
+      .prepare(
+        `SELECT name FROM sqlite_master WHERE type='table' AND name='grid_records'`
+      )
+      .get() as { name: string } | undefined
+
+    if (!exists) {
+      this.db.exec(`
+        CREATE TABLE grid_records (
+          grid_id TEXT NOT NULL,
+          level INTEGER NOT NULL,
+          time TEXT NOT NULL DEFAULT '',
+          source TEXT NOT NULL,
+          feature_id TEXT NOT NULL DEFAULT '',
+          label TEXT,
+          attrs TEXT NOT NULL,
+          PRIMARY KEY (grid_id, level, time, source, feature_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_grid_records_grid_id
+          ON grid_records(grid_id);
+      `)
+      return
+    }
+
+    const cols = this.db
+      .prepare(`PRAGMA table_info(grid_records)`)
+      .all() as { name: string }[]
+    if (cols.some((c) => c.name === "feature_id")) return
+
+    // Migrate legacy PK (grid_id, level, time, source) → include feature_id.
+    this.db.exec(`
+      ALTER TABLE grid_records RENAME TO grid_records_legacy;
+      CREATE TABLE grid_records (
+        grid_id TEXT NOT NULL,
+        level INTEGER NOT NULL,
+        time TEXT NOT NULL DEFAULT '',
+        source TEXT NOT NULL,
+        feature_id TEXT NOT NULL DEFAULT '',
+        label TEXT,
+        attrs TEXT NOT NULL,
+        PRIMARY KEY (grid_id, level, time, source, feature_id)
+      );
+      INSERT INTO grid_records (grid_id, level, time, source, feature_id, label, attrs)
+      SELECT grid_id, level, time, source, '', label, attrs FROM grid_records_legacy;
+      DROP TABLE grid_records_legacy;
+      CREATE INDEX IF NOT EXISTS idx_grid_records_grid_id
+        ON grid_records(grid_id);
+    `)
   }
 
   private toRecord(row: Row): GridCellRecord {
@@ -46,6 +86,7 @@ export class SqliteWarehouse implements GridWarehouse {
       level: row.level,
       time: row.time === "" ? undefined : row.time,
       source: row.source,
+      featureId: row.feature_id === "" ? undefined : row.feature_id,
       label: row.label ?? undefined,
       attrs: JSON.parse(row.attrs) as GridCellRecord["attrs"],
     }
@@ -53,9 +94,9 @@ export class SqliteWarehouse implements GridWarehouse {
 
   async put(records: GridCellRecord[]): Promise<void> {
     const stmt = this.db.prepare(`
-      INSERT INTO grid_records (grid_id, level, time, source, label, attrs)
-      VALUES (@grid_id, @level, @time, @source, @label, @attrs)
-      ON CONFLICT(grid_id, level, time, source) DO UPDATE SET
+      INSERT INTO grid_records (grid_id, level, time, source, feature_id, label, attrs)
+      VALUES (@grid_id, @level, @time, @source, @feature_id, @label, @attrs)
+      ON CONFLICT(grid_id, level, time, source, feature_id) DO UPDATE SET
         label = excluded.label,
         attrs = excluded.attrs
     `)
@@ -66,6 +107,7 @@ export class SqliteWarehouse implements GridWarehouse {
           level: r.level,
           time: r.time ?? "",
           source: r.source,
+          feature_id: r.featureId ?? "",
           label: r.label ?? null,
           attrs: JSON.stringify(r.attrs ?? {}),
         })
@@ -101,11 +143,12 @@ export class SqliteWarehouse implements GridWarehouse {
 
   async delete(records: GridCellRecord[]): Promise<void> {
     const stmt = this.db.prepare(
-      `DELETE FROM grid_records WHERE grid_id = ? AND level = ? AND time = ? AND source = ?`
+      `DELETE FROM grid_records
+       WHERE grid_id = ? AND level = ? AND time = ? AND source = ? AND feature_id = ?`
     )
     const tx = this.db.transaction((rows: GridCellRecord[]) => {
       for (const r of rows) {
-        stmt.run(r.gridId, r.level, r.time ?? "", r.source)
+        stmt.run(r.gridId, r.level, r.time ?? "", r.source, r.featureId ?? "")
       }
     })
     tx(records)

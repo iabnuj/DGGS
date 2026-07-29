@@ -1,9 +1,15 @@
 import { MemoryWarehouse, type GridWarehouse } from "@dggs/grid-store"
 import type { GridCellRecord } from "@dggs/grid-ingest"
 import { getDesktopApi, IpcWarehouse, isDesktopApp } from "@/ipcWarehouse"
-import { buildSampleRecords } from "@/sampleData"
 import { layersFromRecords } from "@/data/ingestGeoJson"
+import {
+  loadFeatureStoreFromLocalStorage,
+  removeSourceFeatures,
+} from "@/data/featureGeometryStore"
 import { useAppStore } from "@/state/store"
+
+/** Built-in demo sources we no longer seed; purge if still in the local DB. */
+const LEGACY_SAMPLE_SOURCES = ["recon", "weather", "alert"] as const
 
 let warehouse: GridWarehouse | null = null
 
@@ -20,14 +26,56 @@ export async function syncLayersFromWarehouse() {
   return rows
 }
 
-export async function ensureSampleData(level = 12) {
+/** Collect grid codes for currently visible data layers and paint them on the map. */
+export async function refreshDataOverlay() {
+  const layers = useAppStore.getState().layers.filter((l) => l.visible)
+  const codes = new Set<string>()
   const wh = getWarehouse()
-  const existing = await wh.list()
-  if (existing.length === 0) {
-    await wh.put(buildSampleRecords(level))
+  for (const layer of layers) {
+    const rows = (await wh.list({ source: layer.source })) as GridCellRecord[]
+    for (const r of rows) codes.add(r.gridId)
   }
-  return syncLayersFromWarehouse()
+  const list = [...codes]
+  useAppStore.getState().setDataOverlayCodes(list)
+
+  // Prefer gridLayer directly — HMR can leave runtime without newer helper methods.
+  const { getMapRuntime } = await import("@/map/useCesiumMap")
+  const rt = getMapRuntime()
+  const layerApi = rt?.gridLayer as
+    | { applyDataOverlay?: (c: Iterable<string>, force?: boolean) => void }
+    | undefined
+  if (layerApi?.applyDataOverlay) {
+    layerApi.applyDataOverlay(list, true)
+  } else if (rt?.applyDataOverlay) {
+    rt.applyDataOverlay(true)
+  } else {
+    useAppStore
+      .getState()
+      .setStatusText("地图未就绪：请重启桌面端后再点眼睛显示图层")
+  }
+  return list
 }
+
+/** Load warehouse layers (no built-in sample seed). */
+export async function bootWarehouse() {
+  loadFeatureStoreFromLocalStorage()
+  const wh = getWarehouse()
+
+  // One-shot cleanup of retired Beijing demo layers.
+  for (const source of LEGACY_SAMPLE_SOURCES) {
+    const rows = (await wh.list({ source })) as GridCellRecord[]
+    if (rows.length && wh.delete) await wh.delete(rows)
+    removeSourceFeatures(source)
+  }
+
+  await syncLayersFromWarehouse()
+  await refreshDataOverlay()
+  const { getMapRuntime } = await import("@/map/useCesiumMap")
+  getMapRuntime()?.applyGisFeatures()
+}
+
+/** @deprecated use bootWarehouse */
+export const ensureSampleData = bootWarehouse
 
 export async function importRecords(
   records: GridCellRecord[],
@@ -40,8 +88,22 @@ export async function importRecords(
   await wh.put(records)
   useAppStore.getState().setImportProgress(90)
   await syncLayersFromWarehouse()
+  await refreshDataOverlay()
+  const { getMapRuntime } = await import("@/map/useCesiumMap")
+  getMapRuntime()?.applyGisFeatures()
   useAppStore.getState().setImportProgress(100)
   window.setTimeout(() => useAppStore.getState().setImportProgress(null), 600)
+}
+
+export async function deleteSourceLayer(source: string) {
+  const wh = getWarehouse()
+  const rows = (await wh.list({ source })) as GridCellRecord[]
+  if (wh.delete) await wh.delete(rows)
+  removeSourceFeatures(source)
+  await syncLayersFromWarehouse()
+  await refreshDataOverlay()
+  const { getMapRuntime } = await import("@/map/useCesiumMap")
+  getMapRuntime()?.applyGisFeatures()
 }
 
 export function watchDesktopDataChanged(onChange: () => void) {

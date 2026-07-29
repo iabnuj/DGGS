@@ -14,10 +14,10 @@ export type QueryOpts = {
 
 /**
  * Logical primary key for upsert identity:
- * (gridId, level, time?, source)
+ * (gridId, level, time?, source, featureId?)
  */
 export function recordKey(r: GridCellRecord): string {
-  return `${r.gridId}\0${r.level}\0${r.time ?? ""}\0${r.source}`
+  return `${r.gridId}\0${r.level}\0${r.time ?? ""}\0${r.source}\0${r.featureId ?? ""}`
 }
 
 export function matchesQuery(r: GridCellRecord, opts?: QueryOpts): boolean {

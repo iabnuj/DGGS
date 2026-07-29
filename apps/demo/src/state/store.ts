@@ -39,7 +39,10 @@ export type LayerInfo = {
   count: number
   levelMin: number
   levelMax: number
+  /** Cyan grid-cell overlay for ingested codes. */
   visible: boolean
+  /** Original GIS geometries (points/lines/polygons) on the map. */
+  featuresVisible: boolean
   source: string
 }
 
@@ -58,6 +61,8 @@ type AppState = {
   gridCount: number
   fps: number
   layers: LayerInfo[]
+  /** 可见数据图层对应的入格编码（地图数据高亮） */
+  dataOverlayCodes: string[]
   analysisResult: AnalysisResult | null
   bufferRadiusM: number
   basemap: BasemapId
@@ -83,6 +88,7 @@ type AppState = {
   setFps: (n: number) => void
   setLayers: (layers: LayerInfo[]) => void
   patchLayer: (id: string, patch: Partial<LayerInfo>) => void
+  setDataOverlayCodes: (codes: string[]) => void
   setAnalysisResult: (r: AnalysisResult | null) => void
   setBufferRadiusM: (n: number) => void
   setBasemap: (b: BasemapId) => void
@@ -125,6 +131,7 @@ export const useAppStore = create<AppState>((set) => ({
   gridCount: 0,
   fps: 0,
   layers: [],
+  dataOverlayCodes: [],
   analysisResult: null,
   bufferRadiusM: 500,
   basemap: "sat",
@@ -152,6 +159,7 @@ export const useAppStore = create<AppState>((set) => ({
     set((s) => ({
       layers: s.layers.map((l) => (l.id === id ? { ...l, ...patch } : l)),
     })),
+  setDataOverlayCodes: (dataOverlayCodes) => set({ dataOverlayCodes }),
   setAnalysisResult: (analysisResult) => set({ analysisResult }),
   setBufferRadiusM: (bufferRadiusM) => set({ bufferRadiusM }),
   setBasemap: (basemap) => set({ basemap }),
