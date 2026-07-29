@@ -1,0 +1,35 @@
+{
+  "name": "@dggs/grid-ingest",
+  "version": "0.1.0",
+  "description": "多源业务上格：点/BBOX → grid_id + 属性（依赖 @dggs/grid-core）",
+  "private": true,
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build-fast": "tsup src/index.ts --format cjs,esm --dts",
+    "build": "pnpm run build-fast",
+    "test": "vitest run",
+    "prepublishOnly": "pnpm run build"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@dggs/grid-core": "workspace:*"
+  },
+  "devDependencies": {
+    "tsup": "6.6.3",
+    "typescript": "4.9.5",
+    "vitest": "0.28.5"
+  }
+}

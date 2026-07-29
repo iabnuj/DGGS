@@ -1,75 +1,12 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" class="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DGGS Demo · GeoSOT + Cesium</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=IBM+Plex+Sans:wght@400;600&display=swap"
-      rel="stylesheet"
-    />
   </head>
   <body>
-    <div id="cesiumContainer"></div>
-    <aside id="panel" class="panel">
-      <header class="panel__head">
-        <p class="panel__brand">DGGS</p>
-        <h1 class="panel__title">网格编码 Demo</h1>
-        <p class="panel__sub">GeoSOT 视窗落格 · 多源同码 · 层级钻取</p>
-      </header>
-
-      <section class="panel__block">
-        <label class="field">
-          <span>网格层级</span>
-          <input id="levelInput" type="number" min="4" max="18" value="12" />
-        </label>
-        <label class="field">
-          <span>网格层数（高度向）</span>
-          <input id="heightCount" type="number" min="1" max="10" value="1" />
-        </label>
-        <label class="field field--check">
-          <input id="autoLevel" type="checkbox" checked />
-          <span>随相机高度自动调级</span>
-        </label>
-        <div class="toggles">
-          <label class="field field--check">
-            <input id="showOutline" type="checkbox" checked />
-            <span>显示边框</span>
-          </label>
-          <label class="field field--check">
-            <input id="showFaces" type="checkbox" />
-            <span>显示面</span>
-          </label>
-          <label class="field field--check">
-            <input id="showCode" type="checkbox" />
-            <span>显示编码</span>
-          </label>
-        </div>
-        <button id="refreshBtn" type="button" class="btn">刷新视窗格子</button>
-      </section>
-
-      <section class="panel__block">
-        <h2>选中格子</h2>
-        <dl id="cellInfo" class="kv">
-          <div><dt>编码</dt><dd>—</dd></div>
-          <div><dt>层级</dt><dd>—</dd></div>
-          <div><dt>范围</dt><dd>—</dd></div>
-        </dl>
-        <div class="row">
-          <button id="parentBtn" type="button" class="btn btn--ghost" disabled>上钻 parent</button>
-          <button id="childBtn" type="button" class="btn btn--ghost" disabled>下钻 children</button>
-        </div>
-      </section>
-
-      <section class="panel__block">
-        <h2>多源上格（样例）</h2>
-        <ul id="sourceList" class="sources"></ul>
-      </section>
-
-      <p id="status" class="status">就绪</p>
-    </aside>
-    <script type="module" src="/src/main.ts"></script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

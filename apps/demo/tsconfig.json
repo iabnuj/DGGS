@@ -4,14 +4,19 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
     "isolatedModules": true,
     "resolveJsonModule": true,
     "types": ["vite/client"],
+    "baseUrl": ".",
     "paths": {
-      "@dggs/grid-core": ["../../packages/grid-core/src/index.ts"]
+      "@/*": ["./src/*"],
+      "@dggs/grid-core": ["../../packages/grid-core/src/index.ts"],
+      "@dggs/grid-ingest": ["../../packages/grid-ingest/src/index.ts"],
+      "@dggs/grid-store": ["../../packages/grid-store/src/index.ts"]
     }
   },
   "include": ["src"]

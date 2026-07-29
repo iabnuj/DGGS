@@ -1,14 +1,21 @@
 import {
   Cartesian2,
   Cartesian3,
+  ClassificationType,
   Color,
   ColorGeometryInstanceAttribute,
   GeometryInstance,
+  GroundPrimitive,
+  GroundPolylineGeometry,
+  GroundPolylinePrimitive,
+  HeightReference,
+  HorizontalOrigin,
   LabelCollection,
   LabelStyle,
   Math as CesiumMath,
   Material,
   PerInstanceColorAppearance,
+  PolylineColorAppearance,
   PolylineGeometry,
   PolylineMaterialAppearance,
   Primitive,
@@ -16,7 +23,6 @@ import {
   RectangleGeometry,
   RectangleOutlineGeometry,
   VerticalOrigin,
-  HorizontalOrigin,
   ArcType,
   type Viewer,
 } from "cesium"
@@ -47,6 +53,16 @@ export type GridDrawOptions = {
   showCode: boolean
   /** Vertical stack count (≥1). Layer thickness ≈ cell lat span × 110574 m. */
   heightCount: number
+  /** Drape outlines/fills on terrain (ignores extrusion while on). */
+  clampToGround: boolean
+  /** CSS hex, e.g. #ffffff */
+  outlineColor: string
+  /** CSS hex for fill faces */
+  fillColor: string
+  /** CSS hex for selection / buffer highlight */
+  highlightColor: string
+  /** 0–100 overall alpha multiplier */
+  opacity: number
 }
 
 const DEFAULT_OPTIONS: GridDrawOptions = {
@@ -54,6 +70,16 @@ const DEFAULT_OPTIONS: GridDrawOptions = {
   showFaces: false,
   showCode: false,
   heightCount: 1,
+  clampToGround: false,
+  outlineColor: "#ffffff",
+  fillColor: "#22c55e",
+  highlightColor: "#ef4444",
+  opacity: 100,
+}
+
+function colorWithOpacity(css: string, baseAlpha: number, opacityPct: number) {
+  const o = Math.max(0, Math.min(100, opacityPct)) / 100
+  return Color.fromCssColorString(css).withAlpha(baseAlpha * o)
 }
 
 function clampLat(v: number) {
@@ -119,13 +145,15 @@ function fallbackBBoxes(viewer: Viewer): BBox[] {
   return []
 }
 
+type AnyPrimitive = Primitive | GroundPrimitive | GroundPolylinePrimitive
+
 /**
  * Viewport grid mesh with toggles for outline / face / code / vertical layers
  * (display style aligned with apps/demo/test.html).
  */
 export class GridLayer {
-  private outlinePrimitive: Primitive | undefined
-  private fillPrimitive: Primitive | undefined
+  private outlinePrimitive: AnyPrimitive | undefined
+  private fillPrimitive: AnyPrimitive | undefined
   private pillarPrimitive: Primitive | undefined
   private labelCollection: LabelCollection | undefined
   private cells: CellMeta[] = []
@@ -146,7 +174,14 @@ export class GridLayer {
     this.options = {
       ...this.options,
       ...partial,
-      heightCount: Math.max(1, Math.min(10, Math.floor(partial.heightCount ?? this.options.heightCount))),
+      heightCount: Math.max(
+        1,
+        Math.min(10, Math.floor(partial.heightCount ?? this.options.heightCount))
+      ),
+      opacity: Math.max(
+        0,
+        Math.min(100, Math.round(partial.opacity ?? this.options.opacity))
+      ),
     }
   }
 
@@ -210,6 +245,7 @@ export class GridLayer {
   }
 
   refresh(level: number): { count: number; truncated: boolean } {
+    if (this.viewer.isDestroyed()) return { count: 0, truncated: false }
     const rect = this.viewer.camera.computeViewRectangle()
     let bboxes = rect ? viewRectToBBoxes(rect) : []
     if (bboxes.length === 0) {
@@ -228,19 +264,159 @@ export class GridLayer {
   draw(codes: string[]) {
     this.clear()
     if (codes.length === 0) return
+    if (this.viewer.isDestroyed()) return
 
-    const { showOutline, showFaces, showCode, heightCount } = this.options
+    const { showOutline, showFaces, showCode, heightCount, clampToGround } =
+      this.options
     if (!showOutline && !showFaces && !showCode) return
 
+    // Ground draping is 2.5D; keep extrusion on ellipsoid path only.
+    if (clampToGround) {
+      this.drawClamped(codes, showOutline, showFaces, showCode)
+      return
+    }
+
+    this.drawEllipsoid(codes, showOutline, showFaces, showCode, heightCount)
+  }
+
+  private drawClamped(
+    codes: string[],
+    showOutline: boolean,
+    showFaces: boolean,
+    showCode: boolean
+  ) {
+    const outlineInstances: GeometryInstance[] = []
+    const fillInstances: GeometryInstance[] = []
+    this.cells = []
+
+    const outlineColor = colorWithOpacity(this.options.outlineColor, 0.85, this.options.opacity)
+    const faceColor = colorWithOpacity(this.options.fillColor, 0.28, this.options.opacity)
+    const hiLine = colorWithOpacity(this.options.highlightColor, 0.95, this.options.opacity)
+    const hiFill = colorWithOpacity(this.options.highlightColor, 0.32, this.options.opacity)
+
+    let labels: LabelCollection | undefined
+    if (showCode) {
+      labels = this.viewer.scene.primitives.add(new LabelCollection())
+      this.labelCollection = labels
+    }
+
+    for (const code of codes) {
+      const b = geosot.bboxFromCode(code)
+      const west = clampLon(b.west)
+      const east = clampLon(b.east)
+      const south = clampLat(b.south)
+      const north = clampLat(b.north)
+      if (!(west < east && south < north)) continue
+
+      const hi = this.highlightCodes.has(code)
+      const rectangle = Rectangle.fromDegrees(west, south, east, north)
+      const cx = (west + east) / 2
+      const cy = (south + north) / 2
+
+      if (showOutline) {
+        outlineInstances.push(
+          new GeometryInstance({
+            id: code,
+            geometry: new GroundPolylineGeometry({
+              positions: Cartesian3.fromDegreesArray([
+                west,
+                south,
+                east,
+                south,
+                east,
+                north,
+                west,
+                north,
+                west,
+                south,
+              ]),
+              width: hi ? 2.5 : 1.5,
+            }),
+            attributes: {
+              color: ColorGeometryInstanceAttribute.fromColor(hi ? hiLine : outlineColor),
+            },
+          })
+        )
+      }
+
+      if (showFaces) {
+        fillInstances.push(
+          new GeometryInstance({
+            id: `${code}#fill0`,
+            geometry: new RectangleGeometry({
+              rectangle,
+              vertexFormat: PerInstanceColorAppearance.VERTEX_FORMAT,
+            }),
+            attributes: {
+              color: ColorGeometryInstanceAttribute.fromColor(hi ? hiFill : faceColor),
+            },
+          })
+        )
+      }
+
+      if (showCode && labels) {
+        labels.add({
+          position: Cartesian3.fromDegrees(cx, cy),
+          text: code,
+          font: "13px IBM Plex Sans, sans-serif",
+          fillColor: Color.WHITE,
+          outlineColor: Color.BLACK,
+          outlineWidth: 3,
+          style: LabelStyle.FILL_AND_OUTLINE,
+          verticalOrigin: VerticalOrigin.CENTER,
+          horizontalOrigin: HorizontalOrigin.CENTER,
+          heightReference: HeightReference.CLAMP_TO_GROUND,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          showBackground: true,
+          backgroundColor: Color.BLACK.withAlpha(0.45),
+          backgroundPadding: new Cartesian2(4, 3),
+        })
+      }
+
+      this.cells.push({ code, west, south, east, north })
+    }
+
+    if (outlineInstances.length > 0) {
+      this.outlinePrimitive = this.viewer.scene.primitives.add(
+        new GroundPolylinePrimitive({
+          geometryInstances: outlineInstances,
+          appearance: new PolylineColorAppearance(),
+          asynchronous: true,
+        })
+      )
+    }
+
+    if (fillInstances.length > 0) {
+      this.fillPrimitive = this.viewer.scene.primitives.add(
+        new GroundPrimitive({
+          geometryInstances: fillInstances,
+          appearance: new PerInstanceColorAppearance({
+            translucent: true,
+            flat: true,
+          }),
+          classificationType: ClassificationType.TERRAIN,
+          asynchronous: true,
+        })
+      )
+    }
+  }
+
+  private drawEllipsoid(
+    codes: string[],
+    showOutline: boolean,
+    showFaces: boolean,
+    showCode: boolean,
+    heightCount: number
+  ) {
     const outlineInstances: GeometryInstance[] = []
     const fillInstances: GeometryInstance[] = []
     const pillarInstances: GeometryInstance[] = []
     this.cells = []
 
-    const outlineColor = Color.WHITE.withAlpha(0.35)
-    const faceColor = Color.GREEN.withAlpha(0.2)
-    const hiLine = Color.fromCssColorString("#b91c1c").withAlpha(0.95)
-    const hiFill = Color.fromCssColorString("#b91c1c").withAlpha(0.28)
+    const outlineColor = colorWithOpacity(this.options.outlineColor, 0.75, this.options.opacity)
+    const faceColor = colorWithOpacity(this.options.fillColor, 0.25, this.options.opacity)
+    const hiLine = colorWithOpacity(this.options.highlightColor, 0.95, this.options.opacity)
+    const hiFill = colorWithOpacity(this.options.highlightColor, 0.3, this.options.opacity)
 
     let labels: LabelCollection | undefined
     if (showCode) {
@@ -333,7 +509,6 @@ export class GridLayer {
         }
       }
 
-      // Vertical pillars at cell corners (test.html style for multi-layer).
       if (showOutline && heightCount > 1) {
         const corners: [number, number][] = [
           [west, south],
@@ -346,8 +521,12 @@ export class GridLayer {
             new GeometryInstance({
               geometry: new PolylineGeometry({
                 positions: Cartesian3.fromDegreesArrayHeights([
-                  lon, lat, 0,
-                  lon, lat, totalH,
+                  lon,
+                  lat,
+                  0,
+                  lon,
+                  lat,
+                  totalH,
                 ]),
                 width: 1.0,
                 arcType: ArcType.NONE,
