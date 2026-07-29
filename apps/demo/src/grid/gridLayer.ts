@@ -63,6 +63,18 @@ export type GridDrawOptions = {
   highlightColor: string
   /** 0–100 overall alpha multiplier */
   opacity: number
+  /** 编号文字颜色 */
+  codeColor: string
+  /** 编号描边颜色 */
+  codeOutlineColor: string
+  /** 编号字号 px */
+  codeFontSize: number
+  /** 编号是否带底衬 */
+  codeBackground: boolean
+  /** 编号底衬透明度 0–100 */
+  codeBgOpacity: number
+  /** 编号缩写：只显示末尾几段，避免遮挡 */
+  codeShort: boolean
 }
 
 const DEFAULT_OPTIONS: GridDrawOptions = {
@@ -75,11 +87,25 @@ const DEFAULT_OPTIONS: GridDrawOptions = {
   fillColor: "#22c55e",
   highlightColor: "#ef4444",
   opacity: 100,
+  codeColor: "#ffffff",
+  codeOutlineColor: "#000000",
+  codeFontSize: 13,
+  codeBackground: true,
+  codeBgOpacity: 45,
+  codeShort: true,
 }
 
 function colorWithOpacity(css: string, baseAlpha: number, opacityPct: number) {
   const o = Math.max(0, Math.min(100, opacityPct)) / 100
   return Color.fromCssColorString(css).withAlpha(baseAlpha * o)
+}
+
+/** GeoSOT 码过长时截取末尾，便于图上阅读。 */
+function formatCodeLabel(code: string, short: boolean): string {
+  if (!short || code.length <= 14) return code
+  const parts = code.split("-")
+  if (parts.length <= 3) return `…${code.slice(-12)}`
+  return `…${parts.slice(-3).join("-")}`
 }
 
 function clampLat(v: number) {
@@ -151,14 +177,25 @@ type AnyPrimitive = Primitive | GroundPrimitive | GroundPolylinePrimitive
  * Viewport grid mesh with toggles for outline / face / code / vertical layers
  * (display style aligned with apps/demo/test.html).
  */
+function sameCodeSet(a: Set<string>, b: Set<string>) {
+  if (a.size !== b.size) return false
+  for (const x of a) if (!b.has(x)) return false
+  return true
+}
+
 export class GridLayer {
   private outlinePrimitive: AnyPrimitive | undefined
   private fillPrimitive: AnyPrimitive | undefined
   private pillarPrimitive: Primitive | undefined
   private labelCollection: LabelCollection | undefined
+  /** Selection/buffer overlay — updated independently so the base mesh never flashes. */
+  private hiOutlinePrimitive: AnyPrimitive | undefined
+  private hiFillPrimitive: AnyPrimitive | undefined
   private cells: CellMeta[] = []
   private highlightCodes = new Set<string>()
   private options: GridDrawOptions = { ...DEFAULT_OPTIONS }
+  /** Skip full mesh rebuild when camera / style signature unchanged. */
+  private lastViewKey = ""
 
   constructor(private viewer: Viewer) {}
 
@@ -171,6 +208,7 @@ export class GridLayer {
   }
 
   setOptions(partial: Partial<GridDrawOptions>) {
+    const prev = this.options
     this.options = {
       ...this.options,
       ...partial,
@@ -182,10 +220,111 @@ export class GridLayer {
         0,
         Math.min(100, Math.round(partial.opacity ?? this.options.opacity))
       ),
+      codeFontSize: Math.max(
+        8,
+        Math.min(28, Math.round(partial.codeFontSize ?? this.options.codeFontSize))
+      ),
+      codeBgOpacity: Math.max(
+        0,
+        Math.min(100, Math.round(partial.codeBgOpacity ?? this.options.codeBgOpacity))
+      ),
+    }
+    if (this.styleSignature(prev) !== this.styleSignature(this.options)) {
+      this.lastViewKey = ""
+    } else if (prev.highlightColor !== this.options.highlightColor) {
+      this.redrawHighlightOverlay()
     }
   }
 
+  private styleSignature(o: GridDrawOptions) {
+    return [
+      o.showOutline,
+      o.showFaces,
+      o.showCode,
+      o.heightCount,
+      o.clampToGround,
+      o.outlineColor,
+      o.fillColor,
+      o.opacity,
+      o.codeColor,
+      o.codeOutlineColor,
+      o.codeFontSize,
+      o.codeBackground,
+      o.codeBgOpacity,
+      o.codeShort,
+    ].join("|")
+  }
+
+  private viewSignature(level: number): string {
+    const cellDeg = 180 / 2 ** Math.max(1, level)
+    const q = Math.max(cellDeg * 0.4, 0.002)
+    const quantDeg = (deg: number) => (Math.round(deg / q) * q).toFixed(5)
+    const quantRad = (rad: number) => quantDeg(CesiumMath.toDegrees(rad))
+    const style = this.styleSignature(this.options)
+    const rect = this.viewer.camera.computeViewRectangle()
+    if (!rect) {
+      const c = this.viewer.camera.positionCartographic
+      const h = Math.round(c.height / Math.max(80, c.height * 0.02)) *
+        Math.max(80, c.height * 0.02)
+      return `fb|${level}|${quantRad(c.longitude)}|${quantRad(c.latitude)}|${Math.round(h)}|${style}`
+    }
+    return [
+      level,
+      quantRad(rect.west),
+      quantRad(rect.south),
+      quantRad(rect.east),
+      quantRad(rect.north),
+      style,
+    ].join("|")
+  }
+
+  private addCodeLabel(
+    labels: LabelCollection,
+    opts: {
+      lng: number
+      lat: number
+      height?: number
+      text: string
+      clampToGround?: boolean
+    }
+  ) {
+    const {
+      codeColor,
+      codeOutlineColor,
+      codeFontSize,
+      codeBackground,
+      codeBgOpacity,
+      codeShort,
+      opacity,
+    } = this.options
+    const o = Math.max(0, Math.min(100, opacity)) / 100
+    // Keep a small lift so labels don't z-fight the globe; do NOT set
+    // disableDepthTestDistance to Infinity — that draws far-side codes through Earth.
+    const lift = opts.clampToGround ? 2 : Math.max(30, (opts.height ?? 0) + 80)
+    labels.add({
+      position: Cartesian3.fromDegrees(opts.lng, opts.lat, lift),
+      text: formatCodeLabel(opts.text, codeShort),
+      font: `${codeFontSize}px "IBM Plex Sans", "Source Han Sans SC", sans-serif`,
+      fillColor: Color.fromCssColorString(codeColor).withAlpha(Math.max(0.15, o)),
+      outlineColor: Color.fromCssColorString(codeOutlineColor).withAlpha(
+        Math.max(0.15, o)
+      ),
+      outlineWidth: 3,
+      style: LabelStyle.FILL_AND_OUTLINE,
+      verticalOrigin: VerticalOrigin.CENTER,
+      horizontalOrigin: HorizontalOrigin.CENTER,
+      heightReference: opts.clampToGround
+        ? HeightReference.CLAMP_TO_GROUND
+        : HeightReference.NONE,
+      disableDepthTestDistance: 0,
+      showBackground: codeBackground,
+      backgroundColor: Color.BLACK.withAlpha((codeBgOpacity / 100) * o),
+      backgroundPadding: new Cartesian2(4, 3),
+    })
+  }
+
   clear() {
+    this.clearHighlightOverlay()
     if (this.outlinePrimitive) {
       this.viewer.scene.primitives.remove(this.outlinePrimitive)
       this.outlinePrimitive = undefined
@@ -205,8 +344,182 @@ export class GridLayer {
     this.cells = []
   }
 
+  private clearHighlightOverlay() {
+    if (this.hiOutlinePrimitive) {
+      this.viewer.scene.primitives.remove(this.hiOutlinePrimitive)
+      this.hiOutlinePrimitive = undefined
+    }
+    if (this.hiFillPrimitive) {
+      this.viewer.scene.primitives.remove(this.hiFillPrimitive)
+      this.hiFillPrimitive = undefined
+    }
+  }
+
   setHighlights(codes: Iterable<string>) {
     this.highlightCodes = new Set(codes)
+  }
+
+  /** Update selection overlay only — base grid mesh stays untouched. */
+  applyHighlights(codes: Iterable<string>) {
+    const next = new Set(codes)
+    if (sameCodeSet(this.highlightCodes, next)) return
+    this.highlightCodes = next
+    this.redrawHighlightOverlay()
+  }
+
+  private redrawHighlightOverlay() {
+    this.clearHighlightOverlay()
+    if (this.viewer.isDestroyed() || this.highlightCodes.size === 0) return
+
+    const hiLine = colorWithOpacity(
+      this.options.highlightColor,
+      0.98,
+      this.options.opacity
+    )
+    const hiFill = colorWithOpacity(
+      this.options.highlightColor,
+      0.35,
+      this.options.opacity
+    )
+    const clamp = this.options.clampToGround
+    const heightCount = this.options.heightCount
+    const outlineInstances: GeometryInstance[] = []
+    const fillInstances: GeometryInstance[] = []
+
+    for (const code of this.highlightCodes) {
+      const b = geosot.bboxFromCode(code)
+      const west = clampLon(b.west)
+      const east = clampLon(b.east)
+      const south = clampLat(b.south)
+      const north = clampLat(b.north)
+      if (!(west < east && south < north)) continue
+      const rectangle = Rectangle.fromDegrees(west, south, east, north)
+
+      if (clamp) {
+        outlineInstances.push(
+          new GeometryInstance({
+            id: `hi:${code}`,
+            geometry: new GroundPolylineGeometry({
+              positions: Cartesian3.fromDegreesArray([
+                west,
+                south,
+                east,
+                south,
+                east,
+                north,
+                west,
+                north,
+                west,
+                south,
+              ]),
+              width: 3.0,
+            }),
+            attributes: {
+              color: ColorGeometryInstanceAttribute.fromColor(hiLine),
+            },
+          })
+        )
+        fillInstances.push(
+          new GeometryInstance({
+            id: `hi:${code}#fill`,
+            geometry: new RectangleGeometry({
+              rectangle,
+              vertexFormat: PerInstanceColorAppearance.VERTEX_FORMAT,
+            }),
+            attributes: {
+              color: ColorGeometryInstanceAttribute.fromColor(hiFill),
+            },
+          })
+        )
+      } else {
+        const layerH = Math.max(50, (north - south) * METERS_PER_DEG_LAT)
+        for (let k = 0; k < heightCount; k++) {
+          const h0 = k * layerH
+          outlineInstances.push(
+            new GeometryInstance({
+              id: `hi:${code}#o${k}`,
+              geometry: new RectangleOutlineGeometry({
+                rectangle,
+                height: h0,
+              }),
+              attributes: {
+                color: ColorGeometryInstanceAttribute.fromColor(hiLine),
+              },
+            })
+          )
+          fillInstances.push(
+            new GeometryInstance({
+              id: `hi:${code}#fill${k}`,
+              geometry: new RectangleGeometry({
+                rectangle,
+                height: h0,
+                extrudedHeight: h0 + Math.max(40, layerH * 0.2),
+                vertexFormat: PerInstanceColorAppearance.VERTEX_FORMAT,
+              }),
+              attributes: {
+                color: ColorGeometryInstanceAttribute.fromColor(hiFill),
+              },
+            })
+          )
+        }
+      }
+    }
+
+    // Sync build for small overlays so pick/buffer feels instant with no base flash.
+    const async = this.highlightCodes.size > 64
+
+    if (outlineInstances.length > 0) {
+      if (clamp) {
+        this.hiOutlinePrimitive = this.viewer.scene.primitives.add(
+          new GroundPolylinePrimitive({
+            geometryInstances: outlineInstances,
+            appearance: new PolylineColorAppearance(),
+            asynchronous: async,
+          })
+        )
+      } else {
+        const lineWidth = Math.min(2.5, this.viewer.scene.maximumAliasedLineWidth)
+        this.hiOutlinePrimitive = this.viewer.scene.primitives.add(
+          new Primitive({
+            geometryInstances: outlineInstances,
+            appearance: new PerInstanceColorAppearance({
+              flat: true,
+              renderState: { lineWidth },
+            }),
+            asynchronous: async,
+            allowPicking: false,
+          })
+        )
+      }
+    }
+
+    if (fillInstances.length > 0) {
+      if (clamp) {
+        this.hiFillPrimitive = this.viewer.scene.primitives.add(
+          new GroundPrimitive({
+            geometryInstances: fillInstances,
+            appearance: new PerInstanceColorAppearance({
+              translucent: true,
+              flat: true,
+            }),
+            classificationType: ClassificationType.TERRAIN,
+            asynchronous: async,
+          })
+        )
+      } else {
+        this.hiFillPrimitive = this.viewer.scene.primitives.add(
+          new Primitive({
+            geometryInstances: fillInstances,
+            appearance: new PerInstanceColorAppearance({
+              translucent: true,
+              flat: true,
+            }),
+            asynchronous: async,
+            allowPicking: false,
+          })
+        )
+      }
+    }
   }
 
   private collectCodes(bboxes: BBox[], level: number): {
@@ -244,8 +557,28 @@ export class GridLayer {
     return { codes: [...set], truncated, level: usedLevel }
   }
 
-  refresh(level: number): { count: number; truncated: boolean } {
-    if (this.viewer.isDestroyed()) return { count: 0, truncated: false }
+  refresh(
+    level: number,
+    opts?: { force?: boolean; highlights?: Iterable<string> }
+  ): { count: number; truncated: boolean; skipped: boolean } {
+    if (this.viewer.isDestroyed()) {
+      return { count: 0, truncated: false, skipped: true }
+    }
+
+    const nextHighlights =
+      opts?.highlights !== undefined
+        ? new Set(opts.highlights)
+        : this.highlightCodes
+
+    const key = this.viewSignature(level)
+    if (!opts?.force && key === this.lastViewKey && this.cells.length > 0) {
+      // Same viewport: only refresh selection colors.
+      this.applyHighlights(nextHighlights)
+      return { count: this.cells.length, truncated: false, skipped: true }
+    }
+
+    this.highlightCodes = nextHighlights
+
     const rect = this.viewer.camera.computeViewRectangle()
     let bboxes = rect ? viewRectToBBoxes(rect) : []
     if (bboxes.length === 0) {
@@ -253,12 +586,14 @@ export class GridLayer {
     }
     if (bboxes.length === 0) {
       this.clear()
-      return { count: 0, truncated: false }
+      this.lastViewKey = ""
+      return { count: 0, truncated: false, skipped: false }
     }
 
     const { codes, truncated } = this.collectCodes(bboxes, level)
     this.draw(codes)
-    return { count: this.cells.length, truncated }
+    this.lastViewKey = key
+    return { count: this.cells.length, truncated, skipped: false }
   }
 
   draw(codes: string[]) {
@@ -268,15 +603,18 @@ export class GridLayer {
 
     const { showOutline, showFaces, showCode, heightCount, clampToGround } =
       this.options
-    if (!showOutline && !showFaces && !showCode) return
+    if (!showOutline && !showFaces && !showCode) {
+      this.redrawHighlightOverlay()
+      return
+    }
 
     // Ground draping is 2.5D; keep extrusion on ellipsoid path only.
     if (clampToGround) {
       this.drawClamped(codes, showOutline, showFaces, showCode)
-      return
+    } else {
+      this.drawEllipsoid(codes, showOutline, showFaces, showCode, heightCount)
     }
-
-    this.drawEllipsoid(codes, showOutline, showFaces, showCode, heightCount)
+    this.redrawHighlightOverlay()
   }
 
   private drawClamped(
@@ -291,8 +629,6 @@ export class GridLayer {
 
     const outlineColor = colorWithOpacity(this.options.outlineColor, 0.85, this.options.opacity)
     const faceColor = colorWithOpacity(this.options.fillColor, 0.28, this.options.opacity)
-    const hiLine = colorWithOpacity(this.options.highlightColor, 0.95, this.options.opacity)
-    const hiFill = colorWithOpacity(this.options.highlightColor, 0.32, this.options.opacity)
 
     let labels: LabelCollection | undefined
     if (showCode) {
@@ -308,7 +644,6 @@ export class GridLayer {
       const north = clampLat(b.north)
       if (!(west < east && south < north)) continue
 
-      const hi = this.highlightCodes.has(code)
       const rectangle = Rectangle.fromDegrees(west, south, east, north)
       const cx = (west + east) / 2
       const cy = (south + north) / 2
@@ -330,10 +665,10 @@ export class GridLayer {
                 west,
                 south,
               ]),
-              width: hi ? 2.5 : 1.5,
+              width: 1.5,
             }),
             attributes: {
-              color: ColorGeometryInstanceAttribute.fromColor(hi ? hiLine : outlineColor),
+              color: ColorGeometryInstanceAttribute.fromColor(outlineColor),
             },
           })
         )
@@ -348,28 +683,18 @@ export class GridLayer {
               vertexFormat: PerInstanceColorAppearance.VERTEX_FORMAT,
             }),
             attributes: {
-              color: ColorGeometryInstanceAttribute.fromColor(hi ? hiFill : faceColor),
+              color: ColorGeometryInstanceAttribute.fromColor(faceColor),
             },
           })
         )
       }
 
       if (showCode && labels) {
-        labels.add({
-          position: Cartesian3.fromDegrees(cx, cy),
+        this.addCodeLabel(labels, {
+          lng: cx,
+          lat: cy,
           text: code,
-          font: "13px IBM Plex Sans, sans-serif",
-          fillColor: Color.WHITE,
-          outlineColor: Color.BLACK,
-          outlineWidth: 3,
-          style: LabelStyle.FILL_AND_OUTLINE,
-          verticalOrigin: VerticalOrigin.CENTER,
-          horizontalOrigin: HorizontalOrigin.CENTER,
-          heightReference: HeightReference.CLAMP_TO_GROUND,
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-          showBackground: true,
-          backgroundColor: Color.BLACK.withAlpha(0.45),
-          backgroundPadding: new Cartesian2(4, 3),
+          clampToGround: true,
         })
       }
 
@@ -415,8 +740,6 @@ export class GridLayer {
 
     const outlineColor = colorWithOpacity(this.options.outlineColor, 0.75, this.options.opacity)
     const faceColor = colorWithOpacity(this.options.fillColor, 0.25, this.options.opacity)
-    const hiLine = colorWithOpacity(this.options.highlightColor, 0.95, this.options.opacity)
-    const hiFill = colorWithOpacity(this.options.highlightColor, 0.3, this.options.opacity)
 
     let labels: LabelCollection | undefined
     if (showCode) {
@@ -432,7 +755,6 @@ export class GridLayer {
       const north = clampLat(b.north)
       if (!(west < east && south < north)) continue
 
-      const hi = this.highlightCodes.has(code)
       const rectangle = Rectangle.fromDegrees(west, south, east, north)
       const layerH = Math.max(50, (north - south) * METERS_PER_DEG_LAT)
       const totalH = layerH * heightCount
@@ -452,7 +774,7 @@ export class GridLayer {
                 height: h0,
               }),
               attributes: {
-                color: ColorGeometryInstanceAttribute.fromColor(hi ? hiLine : outlineColor),
+                color: ColorGeometryInstanceAttribute.fromColor(outlineColor),
               },
             })
           )
@@ -465,7 +787,7 @@ export class GridLayer {
                   height: h1,
                 }),
                 attributes: {
-                  color: ColorGeometryInstanceAttribute.fromColor(hi ? hiLine : outlineColor),
+                  color: ColorGeometryInstanceAttribute.fromColor(outlineColor),
                 },
               })
             )
@@ -483,28 +805,19 @@ export class GridLayer {
                 vertexFormat: PerInstanceColorAppearance.VERTEX_FORMAT,
               }),
               attributes: {
-                color: ColorGeometryInstanceAttribute.fromColor(hi ? hiFill : faceColor),
+                color: ColorGeometryInstanceAttribute.fromColor(faceColor),
               },
             })
           )
         }
 
         if (showCode && labels) {
-          labels.add({
-            position: Cartesian3.fromDegrees(cx, cy, h0 + layerH / 2),
+          this.addCodeLabel(labels, {
+            lng: cx,
+            lat: cy,
+            height: h0 + layerH / 2,
             text: heightCount > 1 ? `${code}\nL${k + 1}` : code,
-            font: "13px IBM Plex Sans, sans-serif",
-            fillColor: Color.WHITE,
-            outlineColor: Color.BLACK,
-            outlineWidth: 3,
-            style: LabelStyle.FILL_AND_OUTLINE,
-            verticalOrigin: VerticalOrigin.CENTER,
-            horizontalOrigin: HorizontalOrigin.CENTER,
-            pixelOffset: new Cartesian2(0, 0),
-            disableDepthTestDistance: Number.POSITIVE_INFINITY,
-            showBackground: true,
-            backgroundColor: Color.BLACK.withAlpha(0.45),
-            backgroundPadding: new Cartesian2(4, 3),
+            clampToGround: false,
           })
         }
       }

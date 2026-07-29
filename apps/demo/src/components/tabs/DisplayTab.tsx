@@ -50,6 +50,11 @@ export function DisplayTab() {
     if (refreshNow) bump()
   }
 
+  const debounceBump = () => {
+    window.clearTimeout(opacityTimer.current)
+    opacityTimer.current = window.setTimeout(() => bump(), 80)
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
@@ -94,7 +99,7 @@ export function DisplayTab() {
 
       <div className="space-y-3 border-t border-border/60 pt-3">
         <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-          样式
+          网格样式
         </p>
         <div className="flex items-center justify-between gap-3">
           <Label htmlFor="outline">显示边框</Label>
@@ -110,14 +115,6 @@ export function DisplayTab() {
             id="faces"
             checked={drawOptions.showFaces}
             onCheckedChange={(v) => patchStyle({ showFaces: v })}
-          />
-        </div>
-        <div className="flex items-center justify-between gap-3">
-          <Label htmlFor="show-code">显示编码</Label>
-          <Switch
-            id="show-code"
-            checked={drawOptions.showCode}
-            onCheckedChange={(v) => patchStyle({ showCode: v })}
           />
         </div>
         <ColorField
@@ -152,11 +149,97 @@ export function DisplayTab() {
             step={1}
             onValueChange={([v]) => {
               patchStyle({ opacity: v }, false)
-              window.clearTimeout(opacityTimer.current)
-              opacityTimer.current = window.setTimeout(() => bump(), 80)
+              debounceBump()
             }}
           />
         </div>
+      </div>
+
+      <div className="space-y-3 border-t border-border/60 pt-3">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          格网编号
+        </p>
+        <div className="flex items-center justify-between gap-3">
+          <Label htmlFor="show-code">显示编号</Label>
+          <Switch
+            id="show-code"
+            checked={drawOptions.showCode}
+            onCheckedChange={(v) => patchStyle({ showCode: v })}
+          />
+        </div>
+        {drawOptions.showCode && (
+          <>
+            <div className="flex items-center justify-between gap-3">
+              <Label htmlFor="code-short">缩写显示</Label>
+              <Switch
+                id="code-short"
+                checked={drawOptions.codeShort}
+                onCheckedChange={(v) => patchStyle({ codeShort: v })}
+              />
+            </div>
+            <p className="text-[10px] text-muted-foreground">
+              开启后只显示编码末尾几段，减少遮挡。
+            </p>
+            <ColorField
+              id="code-color"
+              label="文字颜色"
+              value={drawOptions.codeColor}
+              onChange={(codeColor) => patchStyle({ codeColor })}
+            />
+            <ColorField
+              id="code-outline-color"
+              label="描边颜色"
+              value={drawOptions.codeOutlineColor}
+              onChange={(codeOutlineColor) => patchStyle({ codeOutlineColor })}
+            />
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>字号</Label>
+                <span className="font-mono text-xs text-foreground">
+                  {drawOptions.codeFontSize}px
+                </span>
+              </div>
+              <Slider
+                value={[drawOptions.codeFontSize]}
+                min={8}
+                max={24}
+                step={1}
+                onValueChange={([v]) => {
+                  patchStyle({ codeFontSize: v }, false)
+                  debounceBump()
+                }}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <Label htmlFor="code-bg">文字底衬</Label>
+              <Switch
+                id="code-bg"
+                checked={drawOptions.codeBackground}
+                onCheckedChange={(v) => patchStyle({ codeBackground: v })}
+              />
+            </div>
+            {drawOptions.codeBackground && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>底衬透明度</Label>
+                  <span className="font-mono text-xs text-foreground">
+                    {drawOptions.codeBgOpacity}%
+                  </span>
+                </div>
+                <Slider
+                  value={[drawOptions.codeBgOpacity]}
+                  min={0}
+                  max={100}
+                  step={5}
+                  onValueChange={([v]) => {
+                    patchStyle({ codeBgOpacity: v }, false)
+                    debounceBump()
+                  }}
+                />
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       <div className="flex items-center justify-between gap-3 border-t border-border/60 pt-3">

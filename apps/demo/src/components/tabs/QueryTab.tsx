@@ -37,8 +37,7 @@ export function QueryTab() {
           useAppStore.getState().setGridSet(null)
           useAppStore.getState().setAnalysisResult(null)
           useAppStore.getState().setToolMode("pick")
-          getMapRuntime()?.gridLayer.setHighlights([])
-          getMapRuntime()?.refresh()
+          getMapRuntime()?.applyHighlights()
           useAppStore.getState().setStatusText("已清除查询")
         }}
       >

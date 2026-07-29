@@ -27,29 +27,23 @@ export function lineToGridCodes(
   return [...set]
 }
 
-/** Cover polygon exterior ring via bbox (demo-grade approximation). */
+/**
+ * Cover polygon exterior ring via `@dggs/grid-core` `coverPolygon`.
+ * On oversized requests, steps level down until cover succeeds.
+ */
 export function polygonToGridCodes(ring: LngLat[], level: number): string[] {
   if (ring.length < 3) return lineToGridCodes(ring, level)
-  let west = Infinity
-  let south = Infinity
-  let east = -Infinity
-  let north = -Infinity
-  for (const p of ring) {
-    west = Math.min(west, p.lng)
-    east = Math.max(east, p.lng)
-    south = Math.min(south, p.lat)
-    north = Math.max(north, p.lat)
-  }
-  if (!(west < east && south < north)) return []
   try {
-    return cover.coverBBox({ west, south, east, north }, level)
-  } catch {
-    // Cap density: step down level until cover succeeds
+    return cover.coverPolygon(ring, level)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    if (!/too many cells/.test(msg)) throw err
     for (let lv = level - 1; lv >= 4; lv--) {
       try {
-        return cover.coverBBox({ west, south, east, north }, lv)
-      } catch {
-        /* continue */
+        return cover.coverPolygon(ring, lv)
+      } catch (e2) {
+        const m2 = e2 instanceof Error ? e2.message : String(e2)
+        if (!/too many cells/.test(m2)) throw e2
       }
     }
     return []

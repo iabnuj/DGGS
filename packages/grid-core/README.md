@@ -32,7 +32,7 @@ npm run build
 | 模块 | API |
 |------|-----|
 | `algebra` | `parent` / `children` / `neighbors` / `aggregate` |
-| `cover` | `coverBBox` |
+| `cover` | `coverBBox`, `coverPolygon` |
 
 金样例与往返一致性见 `test/consistency.test.ts`。
 

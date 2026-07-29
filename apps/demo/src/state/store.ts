@@ -18,6 +18,12 @@ export type DrawOptionsState = {
   fillColor: string
   highlightColor: string
   opacity: number
+  codeColor: string
+  codeOutlineColor: string
+  codeFontSize: number
+  codeBackground: boolean
+  codeBgOpacity: number
+  codeShort: boolean
 }
 
 export type CursorState = {
@@ -105,6 +111,12 @@ export const useAppStore = create<AppState>((set) => ({
     fillColor: "#22c55e",
     highlightColor: "#ef4444",
     opacity: 100,
+    codeColor: "#ffffff",
+    codeOutlineColor: "#000000",
+    codeFontSize: 13,
+    codeBackground: true,
+    codeBgOpacity: 45,
+    codeShort: true,
   },
   toolMode: "pick",
   gridSet: null,

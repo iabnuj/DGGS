@@ -24,11 +24,10 @@ async function run(kind: "intersect" | "aggregate" | "buffer") {
   useAppStore.getState().setAnalysisResult(result)
   if (result.kind === "buffer") {
     useAppStore.getState().setBufferPreview(true)
-    getMapRuntime()?.refresh()
+    getMapRuntime()?.applyHighlights()
   } else if (result.kind === "intersect") {
     useAppStore.getState().setBufferPreview(false)
-    getMapRuntime()?.gridLayer.setHighlights(result.conflicts.map((c) => c.gridId))
-    getMapRuntime()?.refresh()
+    getMapRuntime()?.applyHighlights()
   }
   useAppStore.getState().setStatusText(`已完成${kind}`)
 }

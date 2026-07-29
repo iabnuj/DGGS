@@ -65,3 +65,33 @@ test("bboxFromCode keeps western longitude negative", () => {
   expect(box.east).toBeLessThanOrEqual(0)
   expect(box.west).toBeLessThan(box.east)
 })
+
+test("coverPolygon is stricter than coverBBox for a right triangle", () => {
+  const level = 14
+  const ring = [
+    { lng: 116.0, lat: 39.0 },
+    { lng: 116.2, lat: 39.0 },
+    { lng: 116.0, lat: 39.2 },
+    { lng: 116.0, lat: 39.0 },
+  ]
+  const bbox = { west: 116, south: 39, east: 116.2, north: 39.2 }
+  const box = cover.coverBBox(bbox, level)
+  const poly = cover.coverPolygon(ring, level)
+
+  expect(poly.length).toBeGreaterThan(0)
+  expect(poly.length).toBeLessThan(box.length)
+
+  // NE corner of the bbox lies outside the triangle.
+  const outside = geosot.locToQuaternary(116.19, 39.19, level)
+  expect(box).toContain(outside)
+  expect(poly).not.toContain(outside)
+
+  // Interior of the triangle is covered.
+  expect(poly).toContain(geosot.locToQuaternary(116.02, 39.02, level))
+})
+
+test("coverPolygon rejects invalid rings", () => {
+  expect(() => cover.coverPolygon([{ lng: 0, lat: 0 }, { lng: 1, lat: 1 }], 8)).toThrow(
+    /at least 3/
+  )
+})

@@ -31,7 +31,9 @@ import type { GridCellRecord } from "@dggs/grid-ingest"
 export type MapRuntime = {
   viewer: Viewer
   gridLayer: GridLayer
-  refresh: () => void
+  refresh: (force?: boolean) => void
+  /** Update pick/buffer highlights without rebuilding the viewport mesh. */
+  applyHighlights: () => void
 }
 
 let runtime: MapRuntime | null = null
@@ -90,7 +92,7 @@ async function maybeAutoRunAnalysis() {
     if (result && result.kind === "buffer") {
       useAppStore.getState().setAnalysisResult(result)
       const rt = runtime
-      if (rt && !rt.viewer.isDestroyed()) rt.refresh()
+      if (rt && !rt.viewer.isDestroyed()) rt.applyHighlights()
     }
   }
 }
@@ -110,30 +112,45 @@ export function useCesiumMap(containerId = "cesiumContainer") {
     const viewer = createViewer(el)
     const gridLayer = new GridLayer(viewer)
 
-    const refresh = () => {
+    const syncHighlights = () => {
+      const s = useAppStore.getState()
+      const analysis = s.analysisResult
+      if (analysis?.kind === "buffer" && s.bufferPreview) {
+        return analysis.codes
+      }
+      if (analysis?.kind === "intersect" && analysis.conflicts.length > 0) {
+        return analysis.conflicts.map((c) => c.gridId)
+      }
+      if (s.gridSet && s.gridSet.codes.length > 0) {
+        return s.gridSet.codes
+      }
+      return [] as string[]
+    }
+
+    const applyHighlights = () => {
+      if (cancelled || viewer.isDestroyed()) return
+      gridLayer.applyHighlights(syncHighlights())
+    }
+
+    const refresh = (force = false) => {
       if (cancelled || viewer.isDestroyed()) return
       const s = useAppStore.getState()
       if (!s.gridVisible) {
         gridLayer.draw([])
-        useAppStore.getState().setGridCount(0)
-        useAppStore.getState().setStatusText("网格已隐藏")
+        gridLayer.setHighlights([])
+        if (s.gridCount !== 0) useAppStore.getState().setGridCount(0)
+        if (s.statusText !== "网格已隐藏") {
+          useAppStore.getState().setStatusText("网格已隐藏")
+        }
         return
       }
 
       let level = s.level
       if (s.autoLevel) {
         const carto = Cartographic.fromCartesian(viewer.camera.positionWC)
-        level = levelFromHeight(carto.height)
-        useAppStore.getState().setLevel(level)
-      }
-
-      const analysis = s.analysisResult
-      if (analysis?.kind === "buffer" && s.bufferPreview) {
-        gridLayer.setHighlights(analysis.codes)
-      } else if (s.gridSet && s.gridSet.codes.length > 0) {
-        gridLayer.setHighlights(s.gridSet.codes)
-      } else {
-        gridLayer.setHighlights([])
+        const next = levelFromHeight(carto.height)
+        if (next !== s.level) useAppStore.getState().setLevel(next)
+        level = next
       }
 
       gridLayer.setOptions({
@@ -143,13 +160,18 @@ export function useCesiumMap(containerId = "cesiumContainer") {
       })
 
       try {
-        const { count, truncated } = gridLayer.refresh(level)
-        useAppStore.getState().setGridCount(count)
-        useAppStore.getState().setStatusText(
-          truncated
-            ? `视窗过大，已降级 · L${level} · ${count} 格`
-            : `L${level} · ${count} 格`
-        )
+        const { count, truncated, skipped } = gridLayer.refresh(level, {
+          force,
+          highlights: syncHighlights(),
+        })
+        if (skipped) return
+        if (s.gridCount !== count) useAppStore.getState().setGridCount(count)
+        const text = truncated
+          ? `视窗过大，已降级 · L${level} · ${count} 格`
+          : `L${level} · ${count} 格`
+        if (useAppStore.getState().statusText !== text) {
+          useAppStore.getState().setStatusText(text)
+        }
       } catch (err) {
         useAppStore.getState().setStatusText(
           `刷新失败: ${err instanceof Error ? err.message : String(err)}`
@@ -157,12 +179,13 @@ export function useCesiumMap(containerId = "cesiumContainer") {
       }
     }
 
-    runtime = { viewer, gridLayer, refresh }
+    runtime = { viewer, gridLayer, refresh, applyHighlights }
 
     let refreshTimer: number | undefined
     const scheduleRefresh = () => {
       window.clearTimeout(refreshTimer)
-      refreshTimer = window.setTimeout(refresh, 200)
+      // Settle after pan/zoom; skip rebuild if view signature unchanged.
+      refreshTimer = window.setTimeout(() => refresh(false), 320)
     }
 
     viewer.camera.moveEnd.addEventListener(scheduleRefresh)
@@ -303,7 +326,7 @@ export function useCesiumMap(containerId = "cesiumContainer") {
         from: "pick",
       })
       useAppStore.getState().setStatusText(`选中 ${finalCode}`)
-      refresh()
+      applyHighlights()
       void maybeAutoRunAnalysis()
     }, ScreenSpaceEventType.LEFT_CLICK)
 
