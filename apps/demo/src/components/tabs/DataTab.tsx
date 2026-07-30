@@ -123,7 +123,8 @@ export function DataTab() {
       if (current.kind === "geojson") {
         const { name, text, level } = current
         useAppStore.getState().setStatusText(`正在入格 ${name} @ L${level}…`)
-        const source = name.replace(/\.(geo)?json$/i, "") || "import"
+        const source =
+          name.replace(/\.(geo)?json$/i, "").replace(/\.shp$/i, "") || "import"
         const featCount = registerFromGeoJsonText(source, text)
         const records = ingestGeoJsonText(text, { level, source, label: name })
         if (records.length === 0) throw new Error("未解析到可入格要素")
@@ -192,7 +193,16 @@ export function DataTab() {
         await stageRaster(picked.name, picked.filePath)
         return
       }
-      if (picked.text) stageGeoJson(picked.name, picked.text)
+      if (picked.text) {
+        if (picked.fromShapefile) {
+          useAppStore
+            .getState()
+            .setStatusText(
+              `已转换 Shapefile（${picked.convertVia ?? "unknown"}）· ${picked.name}`
+            )
+        }
+        stageGeoJson(picked.name, picked.text)
+      }
       return
     }
     fileRef.current?.click()
@@ -213,7 +223,8 @@ export function DataTab() {
       />
       <div className="shrink-0 space-y-3">
       <Button type="button" className="w-full" onClick={() => void onImportClick()}>
-        导入数据 {isDesktopApp() ? "(GeoJSON / GeoTIFF)" : "(GeoJSON)"}
+        导入数据{" "}
+        {isDesktopApp() ? "(GeoJSON / SHP / GeoTIFF)" : "(GeoJSON)"}
       </Button>
       {progress != null && (
         <div className="h-1.5 overflow-hidden rounded-full bg-muted">

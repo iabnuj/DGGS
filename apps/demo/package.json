@@ -33,6 +33,7 @@
     "pngjs": "^7.0.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "shpjs": "^6.2.0",
     "tailwind-merge": "^3.6.0",
     "zustand": "^5.0.14"
   },

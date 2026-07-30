@@ -18,6 +18,8 @@ type DesktopApi = {
     name: string
     text?: string
     filePath?: string
+    fromShapefile?: boolean
+    convertVia?: "ogr2ogr" | "shpjs"
   } | null>
   probeRaster?(filePath: string): Promise<{
     filePath: string

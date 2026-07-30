@@ -9,6 +9,10 @@ import {
   probeRaster,
   resolveChipPath,
 } from "./rasterIngest.mjs"
+import {
+  shapefileDisplayName,
+  shapefileToGeoJson,
+} from "./shapefileToGeoJson.mjs"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const require = createRequire(import.meta.url)
@@ -216,14 +220,15 @@ function registerIpc() {
   })
   ipcMain.handle("desktop:pickImportFile", async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
-      title: "导入 GeoJSON / GeoTIFF",
+      title: "导入 GeoJSON / Shapefile / GeoTIFF",
       defaultPath: getImportDefaultPath(),
       filters: [
         {
           name: "支持的格式",
-          extensions: ["geojson", "json", "tif", "tiff"],
+          extensions: ["geojson", "json", "shp", "zip", "tif", "tiff"],
         },
         { name: "GeoJSON / JSON", extensions: ["geojson", "json"] },
+        { name: "Shapefile", extensions: ["shp", "zip"] },
         { name: "GeoTIFF", extensions: ["tif", "tiff"] },
       ],
       properties: ["openFile"],
@@ -234,6 +239,25 @@ function registerIpc() {
     const ext = path.extname(filePath).toLowerCase()
     if (ext === ".tif" || ext === ".tiff") {
       return { kind: "raster", name, filePath }
+    }
+    if (ext === ".shp" || ext === ".zip") {
+      try {
+        const { text, via } = await shapefileToGeoJson(filePath)
+        return {
+          kind: "geojson",
+          name: shapefileDisplayName(filePath),
+          text,
+          filePath,
+          fromShapefile: true,
+          convertVia: via,
+        }
+      } catch (err) {
+        dialog.showErrorBox(
+          "Shapefile 导入失败",
+          err instanceof Error ? err.message : String(err)
+        )
+        return null
+      }
     }
     const text = await fs.readFile(filePath, "utf8")
     return { kind: "geojson", name, text, filePath }
