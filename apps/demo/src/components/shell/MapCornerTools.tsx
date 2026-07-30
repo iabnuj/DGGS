@@ -2,10 +2,19 @@ import { Expand, RotateCcw, Box } from "lucide-react"
 import { SceneMode } from "cesium"
 import { Button } from "@/components/ui/button"
 import { getMapRuntime, resetChinaView } from "@/map/useCesiumMap"
+import { useAppStore } from "@/state/store"
+
+/** Left drawer width — keep in sync with LeftDrawer. */
+const LEFT_PANEL_W = 320
 
 export function MapCornerTools() {
+  const leftOpen = useAppStore((s) => s.leftPanelOpen)
+
   return (
-    <div className="pointer-events-auto absolute bottom-10 left-5 z-20 flex gap-1 rounded-lg border border-border/60 bg-[#0b1017]/0.7 p-1 backdrop-blur-md">
+    <div
+      className="pointer-events-auto absolute bottom-10 z-20 flex gap-1 rounded-lg border border-border/60 bg-[#0b1017]/0.7 p-1 backdrop-blur-md transition-[left] duration-200"
+      style={{ left: leftOpen ? LEFT_PANEL_W + 12 : 12 }}
+    >
       <Button
         type="button"
         variant="ghost"

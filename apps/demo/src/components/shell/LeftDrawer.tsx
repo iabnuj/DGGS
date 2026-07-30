@@ -1,5 +1,5 @@
 import { PanelLeftClose } from "lucide-react"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Accordion } from "@/components/ui/accordion"
 import { Button } from "@/components/ui/button"
 import { DisplayTab } from "@/components/tabs/DisplayTab"
 import { DataTab } from "@/components/tabs/DataTab"
@@ -13,8 +13,8 @@ export function LeftDrawer() {
   if (!open) return null
 
   return (
-    <aside className="glass-panel pointer-events-auto absolute left-5 top-5 z-20 flex max-h-[80vh] w-[320px] flex-col overflow-hidden rounded-xl">
-      <header className="flex items-start justify-between gap-2 border-b border-border px-4 py-3">
+    <aside className="glass-panel pointer-events-auto absolute bottom-9 left-0 top-0 z-20 flex w-[320px] flex-col overflow-hidden rounded-none border-y-0 border-l-0">
+      <header className="flex shrink-0 items-start justify-between gap-2 border-b border-border px-4 py-3">
         <div className="min-w-0">
           <p className="text-lg font-semibold tracking-wide text-foreground">DGGS</p>
           <p className="text-xs text-muted-foreground">GeoSOT 网格演示</p>
@@ -30,31 +30,18 @@ export function LeftDrawer() {
           <PanelLeftClose className="h-4 w-4" />
         </Button>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-        <Tabs defaultValue="display">
-          <TabsList className="grid h-auto grid-cols-5 gap-0.5">
-            <TabsTrigger value="display">显示</TabsTrigger>
-            <TabsTrigger value="data">数据</TabsTrigger>
-            <TabsTrigger value="query">查询</TabsTrigger>
-            <TabsTrigger value="analysis">分析</TabsTrigger>
-            <TabsTrigger value="map">地图</TabsTrigger>
-          </TabsList>
-          <TabsContent value="display">
-            <DisplayTab />
-          </TabsContent>
-          <TabsContent value="data">
-            <DataTab />
-          </TabsContent>
-          <TabsContent value="query">
-            <QueryTab />
-          </TabsContent>
-          <TabsContent value="analysis">
-            <AnalysisTab />
-          </TabsContent>
-          <TabsContent value="map">
-            <MapTab />
-          </TabsContent>
-        </Tabs>
+      <div className="flex min-h-0 flex-1 flex-col">
+        <Accordion
+          defaultOpen="data"
+          className="gap-0"
+          items={[
+            { id: "data", title: "入格数据", content: <DataTab /> },
+            { id: "query", title: "查询", content: <QueryTab /> },
+            { id: "analysis", title: "分析", content: <AnalysisTab /> },
+            { id: "display", title: "格网显示", content: <DisplayTab /> },
+            { id: "map", title: "地图显示", content: <MapTab /> },
+          ]}
+        />
       </div>
     </aside>
   )

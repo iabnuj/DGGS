@@ -190,7 +190,7 @@ export function RightPanel() {
           <p className="mb-3 text-xs text-muted-foreground">Level {gridSet.level}</p>
           <dl className="mb-3 space-y-2 text-xs">
             <div className="flex justify-between gap-3">
-              <dt className="text-muted-foreground">中心约</dt>
+              <dt className="text-muted-foreground">中心位置</dt>
               <dd className="font-mono text-right">
                 {((bbox.west + bbox.east) / 2).toFixed(5)},{" "}
                 {((bbox.south + bbox.north) / 2).toFixed(5)}
@@ -361,8 +361,8 @@ function PanelShell({
   children: ReactNode
 }) {
   return (
-    <aside className="glass-panel pointer-events-auto absolute right-5 top-5 z-20 flex max-h-[80vh] w-[340px] flex-col overflow-hidden rounded-xl">
-      <header className="flex items-start justify-between gap-2 border-b border-border px-4 py-3">
+    <aside className="glass-panel pointer-events-auto absolute bottom-9 right-0 top-0 z-20 flex w-[340px] flex-col overflow-hidden rounded-none border-y-0 border-r-0">
+      <header className="flex shrink-0 items-start justify-between gap-2 border-b border-border px-4 py-3">
         <div className="min-w-0">
           <p className="text-sm font-semibold">{title}</p>
           <p className="text-xs text-muted-foreground">{sub}</p>
@@ -378,7 +378,7 @@ function PanelShell({
           <PanelRightClose className="h-4 w-4" />
         </Button>
       </header>
-      <div className="overflow-y-auto px-4 py-4">{children}</div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">{children}</div>
     </aside>
   )
 }

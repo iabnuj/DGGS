@@ -14,7 +14,7 @@ export function PanelToggles() {
           type="button"
           variant="secondary"
           size="icon"
-          className="pointer-events-auto absolute left-5 top-5 z-20 h-9 w-9 rounded-lg border border-border/60 bg-[#0b1017]/0.75 shadow-md backdrop-blur-md"
+          className="pointer-events-auto absolute left-0 top-0 z-20 h-9 w-9 rounded-none rounded-br-lg border border-border/60 bg-[#0b1017]/0.75 shadow-md backdrop-blur-md"
           title="显示左侧面板"
           onClick={() => useAppStore.getState().setLeftPanelOpen(true)}
         >
@@ -26,7 +26,7 @@ export function PanelToggles() {
           type="button"
           variant="secondary"
           size="icon"
-          className="pointer-events-auto absolute right-5 top-5 z-20 h-9 w-9 rounded-lg border border-border/60 bg-[#0b1017]/0.75 shadow-md backdrop-blur-md"
+          className="pointer-events-auto absolute right-0 top-0 z-20 h-9 w-9 rounded-none rounded-bl-lg border border-border/60 bg-[#0b1017]/0.75 shadow-md backdrop-blur-md"
           title="显示右侧面板"
           onClick={() => useAppStore.getState().setRightPanelOpen(true)}
         >

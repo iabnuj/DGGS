@@ -187,10 +187,6 @@ export function DataTab() {
           </CardContent>
         </Card>
       )}
-      <p className="text-[11px] text-muted-foreground">
-        眼睛=入格高亮；地图图标=原始要素（点/线/面）。已入库但无几何的图层请重新导入
-        GeoJSON。
-      </p>
       <div className="max-h-[42vh] space-y-2 overflow-y-auto">
         {layers.length === 0 ? (
           <p className="text-xs text-muted-foreground">暂无图层</p>
