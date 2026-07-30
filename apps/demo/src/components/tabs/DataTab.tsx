@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
-import { getDesktopApi, isDesktopApp } from "@/ipcWarehouse"
+import { getDesktopApi, isDesktopApp, confirmAction } from "@/ipcWarehouse"
 import { ingestGeoJsonText } from "@/data/ingestGeoJson"
 import {
   cellSizeMeters,
@@ -304,8 +304,19 @@ export function DataTab() {
                   type="button"
                   size="icon"
                   variant="ghost"
-                  title="删除该 source"
-                  onClick={() => void deleteSourceLayer(layer.source)}
+                  title="删除该图层"
+                  onClick={() => {
+                    void (async () => {
+                      const ok = await confirmAction({
+                        title: "删除图层",
+                        message: `确定删除图层「${layer.name}」？`,
+                        detail:
+                          "将移除该 source 的全部入格记录，此操作不可撤销。",
+                      })
+                      if (!ok) return
+                      await deleteSourceLayer(layer.source)
+                    })()
+                  }}
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>

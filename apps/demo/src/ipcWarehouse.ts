@@ -14,6 +14,12 @@ type DesktopApi = {
   openJson(): Promise<void>
   saveJson(): Promise<void>
   pickImportFile(): Promise<{ name: string; text: string } | null>
+  confirm?(opts: {
+    title?: string
+    message: string
+    detail?: string
+    type?: "none" | "info" | "error" | "question" | "warning"
+  }): Promise<boolean>
   onDataChanged(handler: (payload: { reason: string }) => void): () => void
 }
 
@@ -29,6 +35,27 @@ export function isDesktopApp(): boolean {
 
 export function getDesktopApi(): DesktopApi | undefined {
   return window.dggsDesktop
+}
+
+/** Desktop native confirm (with app icon); falls back to window.confirm. */
+export async function confirmAction(opts: {
+  title?: string
+  message: string
+  detail?: string
+}): Promise<boolean> {
+  const api = getDesktopApi()
+  if (api?.confirm) {
+    return api.confirm({
+      title: opts.title ?? "确认",
+      message: opts.message,
+      detail: opts.detail,
+      type: "warning",
+    })
+  }
+  const text = opts.detail
+    ? `${opts.message}\n${opts.detail}`
+    : opts.message
+  return window.confirm(text)
 }
 
 /** Renderer-side GridWarehouse that proxies to Electron main SQLite. */

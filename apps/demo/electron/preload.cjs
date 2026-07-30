@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld("dggsDesktop", {
   saveJson: () => ipcRenderer.invoke("desktop:saveJson"),
   pickImportFile: () => ipcRenderer.invoke("desktop:pickImportFile"),
   getSampleDataDir: () => ipcRenderer.invoke("desktop:getSampleDataDir"),
+  confirm: (payload) => ipcRenderer.invoke("desktop:confirm", payload),
   onDataChanged: (handler) => {
     const listener = (_event, payload) => handler(payload)
     ipcRenderer.on("desktop:dataChanged", listener)

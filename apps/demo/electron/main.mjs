@@ -44,6 +44,11 @@ function getImportDefaultPath() {
   return undefined
 }
 
+function getAppIconPath() {
+  const p = path.join(__dirname, "../build/icon.png")
+  return existsSync(p) ? p : undefined
+}
+
 /** @type {import('@dggs/grid-store/node').SqliteWarehouse | null} */
 let warehouse = null
 /** @type {BrowserWindow | null} */
@@ -118,6 +123,7 @@ function createMenu() {
               title: "关于",
               message: "DGGS Demo",
               detail: `版本 ${app.getVersion()}\nGeoSOT + Cesium 桌面演示\n本地仓：SQLite\n样例数据：${getSampleDataDir()}`,
+              icon: getAppIconPath(),
             })
           },
         },
@@ -218,6 +224,28 @@ function registerIpc() {
     return { name: path.basename(filePath), text }
   })
   ipcMain.handle("desktop:getSampleDataDir", async () => getSampleDataDir())
+  ipcMain.handle(
+    "desktop:confirm",
+    async (_e, payload = {}) => {
+      const {
+        title = "确认",
+        message = "确定继续？",
+        detail = "",
+        type = "warning",
+      } = payload
+      const result = await dialog.showMessageBox(mainWindow ?? undefined, {
+        type,
+        title,
+        message,
+        detail: detail || undefined,
+        buttons: ["取消", "确定"],
+        defaultId: 1,
+        cancelId: 0,
+        icon: getAppIconPath(),
+      })
+      return result.response === 1
+    }
+  )
 }
 
 function createWindow() {
@@ -225,6 +253,7 @@ function createWindow() {
     width: 1440,
     height: 900,
     title: "DGGS Demo",
+    icon: getAppIconPath(),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,

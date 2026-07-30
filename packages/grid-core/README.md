@@ -33,6 +33,8 @@ npm run build
 |------|-----|
 | `algebra` | `parent` / `children` / `neighbors` / `aggregate` |
 | `cover` | `coverBBox`, `coverPolygon` |
+| `gaussKruger` | CGCS2000 高斯–克吕格正反算、带号 |
+| `fangli` | 方里网编号 `FL6-20-…` ↔ GeoSOT 覆盖映射 |
 
 金样例与往返一致性见 `test/consistency.test.ts`。
 

@@ -24,18 +24,15 @@ import {
 import { lineToGridCodes, polygonToGridCodes } from "@/tools/geometryToGrid"
 import {
   bootWarehouse,
-  getWarehouse,
   watchDesktopDataChanged,
 } from "@/data/warehouseBoot"
 import { loadFeatureStoreFromLocalStorage } from "@/data/featureGeometryStore"
-import { runAnalysis } from "@/analysis"
-import type { GridCellRecord } from "@dggs/grid-ingest"
 
 export type MapRuntime = {
   viewer: Viewer
   gridLayer: GridLayer
   refresh: (force?: boolean) => void
-  /** Update pick/buffer highlights without rebuilding the viewport mesh. */
+  /** Update pick highlights without rebuilding the viewport mesh. */
   applyHighlights: () => void
   /** Update imported data-layer overlay (eye toggles). */
   applyDataOverlay: (force?: boolean) => void
@@ -74,38 +71,6 @@ export function resetChinaView() {
   })
 }
 
-async function maybeAutoRunAnalysis() {
-  const s = useAppStore.getState()
-  const gs = s.gridSet
-  if (!gs) return
-  const records = (await getWarehouse().list()) as GridCellRecord[]
-  const ctx = {
-    gridSet: gs,
-    records,
-    bufferRadiusM: s.bufferRadiusM,
-    obstacleSource: "alert",
-  }
-
-  // aggregate autoRun on polygon
-  if (gs.from === "polygon") {
-    const result = runAnalysis("aggregate", ctx)
-    if (result) {
-      useAppStore.getState().setAnalysisResult(result)
-    }
-    return
-  }
-
-  // buffer 预览：仅在已开启 bufferPreview 时随半径重算（点选本身不高亮邻域）
-  if (gs.from === "pick" && gs.codes.length === 1 && s.bufferPreview) {
-    const result = runAnalysis("buffer", ctx)
-    if (result && result.kind === "buffer") {
-      useAppStore.getState().setAnalysisResult(result)
-      const rt = runtime
-      if (rt && !rt.viewer.isDestroyed()) rt.applyHighlights()
-    }
-  }
-}
-
 export function useCesiumMap(containerId = "cesiumContainer") {
   const readyRef = useRef(false)
   const drawRef = useRef<DrawSession | null>(null)
@@ -126,13 +91,6 @@ export function useCesiumMap(containerId = "cesiumContainer") {
 
     const syncHighlights = () => {
       const s = useAppStore.getState()
-      const analysis = s.analysisResult
-      if (analysis?.kind === "buffer" && s.bufferPreview) {
-        return analysis.codes
-      }
-      if (analysis?.kind === "intersect" && analysis.conflicts.length > 0) {
-        return analysis.conflicts.map((c) => c.gridId)
-      }
       if (s.gridSet && s.gridSet.codes.length > 0) {
         return s.gridSet.codes
       }
@@ -264,6 +222,7 @@ export function useCesiumMap(containerId = "cesiumContainer") {
         level,
         from: session.kind === "line" ? "line" : "polygon",
       })
+      useAppStore.getState().setRightPanelOpen(true)
       useAppStore.getState().setToolMode("pick")
       useAppStore
         .getState()
@@ -271,7 +230,6 @@ export function useCesiumMap(containerId = "cesiumContainer") {
           `${session.kind === "line" ? "线" : "面"}覆盖 ${codes.length} 格`
         )
       refresh()
-      void maybeAutoRunAnalysis()
     }
 
     const startDraw = (kind: "line" | "polygon") => {
@@ -310,16 +268,6 @@ export function useCesiumMap(containerId = "cesiumContainer") {
     const unsubFragments = useAppStore.subscribe((state, prev) => {
       if (state.cellFragmentPreviews === prev.cellFragmentPreviews) return
       applyCellFragments()
-    })
-
-    let bufferTimer: number | undefined
-    const unsubBuffer = useAppStore.subscribe((state, prev) => {
-      if (state.bufferRadiusM === prev.bufferRadiusM) return
-      const gs = state.gridSet
-      if (!gs || gs.from !== "pick" || gs.codes.length !== 1) return
-      useAppStore.getState().setBufferPreview(true)
-      window.clearTimeout(bufferTimer)
-      bufferTimer = window.setTimeout(() => void maybeAutoRunAnalysis(), 120)
     })
 
     const handler = new ScreenSpaceEventHandler(viewer.scene.canvas)
@@ -377,9 +325,9 @@ export function useCesiumMap(containerId = "cesiumContainer") {
         level,
         from: "pick",
       })
+      useAppStore.getState().setRightPanelOpen(true)
       useAppStore.getState().setStatusText(`选中 ${finalCode}`)
       applyHighlights()
-      void maybeAutoRunAnalysis()
     }, ScreenSpaceEventType.LEFT_CLICK)
 
     let lastFrame = performance.now()
@@ -412,10 +360,8 @@ export function useCesiumMap(containerId = "cesiumContainer") {
     return () => {
       cancelled = true
       window.clearTimeout(refreshTimer)
-      window.clearTimeout(bufferTimer)
       unsubTool()
       unsubBasemap()
-      unsubBuffer()
       unsubFragments()
       unwatch()
       clearDraw()

@@ -33,7 +33,7 @@ export function Accordion({
   }
 
   return (
-    <div className={cn("flex min-h-0 flex-1 flex-col gap-1.5", className)}>
+    <div className={cn("flex min-h-0 flex-1 flex-col", className)}>
       {items.map((item) => {
         const open = openId === item.id
         return (
@@ -41,36 +41,54 @@ export function Accordion({
             key={item.id}
             className={cn(
               "flex flex-col overflow-hidden border-b border-border/80 last:border-b-0",
-              open ? "min-h-0 flex-1" : "shrink-0"
+              "transition-[flex-grow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+              open ? "min-h-0 flex-1" : "shrink-0 flex-none"
             )}
           >
             <button
               type="button"
               className={cn(
-                "flex w-full shrink-0 items-center justify-between gap-2 px-3 py-2.5 text-left text-sm font-semibold tracking-wide transition-colors",
+                "flex w-full shrink-0 items-center justify-between gap-2 border-l-2 px-3 py-2.5 text-left text-sm tracking-wide",
+                "transition-colors duration-200",
                 open
-                  ? "bg-secondary text-foreground hover:bg-secondary/90"
-                  : "bg-muted/80 text-foreground/90 hover:bg-muted"
+                  ? "border-l-primary bg-primary/15 font-semibold text-foreground hover:bg-primary/20"
+                  : "border-l-transparent bg-transparent font-medium text-muted-foreground hover:bg-muted/50 hover:text-foreground/85"
               )}
               aria-expanded={open}
               onClick={() => toggle(item.id)}
             >
-              <span>{item.title}</span>
+              <span className={cn(open && "text-primary")}>{item.title}</span>
               <ChevronDown
                 className={cn(
-                  "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200",
-                  open && "rotate-180 text-primary"
+                  "h-4 w-4 shrink-0 transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+                  open
+                    ? "rotate-180 text-primary"
+                    : "text-muted-foreground/70"
                 )}
               />
             </button>
+
+            {/* grid 0fr → 1fr：高度折叠动画；打开节再靠 flex-1 吃满剩余高度 */}
             <div
               className={cn(
-                "min-h-0 flex-1 overflow-y-auto border-t border-border/60 bg-background/40 px-3 py-3",
-                !open && "hidden"
+                "grid min-h-0 transition-[grid-template-rows,opacity] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+                open
+                  ? "flex-1 grid-rows-[1fr] opacity-100"
+                  : "grid-rows-[0fr] opacity-0"
               )}
-              hidden={!open}
+              aria-hidden={!open}
             >
-              {item.content}
+              <div className="min-h-0 overflow-hidden">
+                <div
+                  className={cn(
+                    "h-full overflow-y-auto border-t border-border/60 bg-background/40 px-3 py-3",
+                    "transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+                    open ? "translate-y-0" : "-translate-y-1"
+                  )}
+                >
+                  {item.content}
+                </div>
+              </div>
             </div>
           </div>
         )

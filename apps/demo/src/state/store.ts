@@ -1,5 +1,4 @@
 import { create } from "zustand"
-import type { AnalysisResult } from "@/analysis"
 import type { GridCellRecord } from "@dggs/grid-ingest"
 
 export type ToolMode = "pan" | "pick" | "drawLine" | "drawPolygon"
@@ -66,15 +65,12 @@ type AppState = {
   layers: LayerInfo[]
   dataOverlayCodes: string[]
   cellFragmentPreviews: GridCellRecord[]
-  analysisResult: AnalysisResult | null
-  bufferRadiusM: number
   basemap: BasemapId
   terrain: boolean
   lighting: boolean
   importProgress: number | null
   leftPanelOpen: boolean
   rightPanelOpen: boolean
-  bufferPreview: boolean
   adminOverlay: boolean
   setGridVisible: (v: boolean) => void
   setLevel: (v: number) => void
@@ -97,8 +93,6 @@ type AppState = {
     records: GridCellRecord[]
   ) => void
   clearCellFragmentPreviews: () => void
-  setAnalysisResult: (r: AnalysisResult | null) => void
-  setBufferRadiusM: (n: number) => void
   setBasemap: (b: BasemapId) => void
   setTerrain: (v: boolean) => void
   setLighting: (v: boolean) => void
@@ -107,7 +101,6 @@ type AppState = {
   setRightPanelOpen: (v: boolean) => void
   toggleLeftPanel: () => void
   toggleRightPanel: () => void
-  setBufferPreview: (v: boolean) => void
   setAdminOverlay: (v: boolean) => void
 }
 
@@ -141,15 +134,12 @@ export const useAppStore = create<AppState>((set) => ({
   layers: [],
   dataOverlayCodes: [],
   cellFragmentPreviews: [],
-  analysisResult: null,
-  bufferRadiusM: 500,
   basemap: "sat",
   terrain: false,
   lighting: false,
   importProgress: null,
   leftPanelOpen: true,
   rightPanelOpen: true,
-  bufferPreview: false,
   adminOverlay: true,
   setGridVisible: (gridVisible) => set({ gridVisible }),
   setLevel: (level) => set({ level }),
@@ -161,8 +151,6 @@ export const useAppStore = create<AppState>((set) => ({
   setGridSet: (gridSet) =>
     set({
       gridSet,
-      analysisResult: null,
-      bufferPreview: false,
       cellFragmentPreviews: [],
     }),
   setCursor: (cursor) => set({ cursor }),
@@ -197,8 +185,6 @@ export const useAppStore = create<AppState>((set) => ({
       ],
     })),
   clearCellFragmentPreviews: () => set({ cellFragmentPreviews: [] }),
-  setAnalysisResult: (analysisResult) => set({ analysisResult }),
-  setBufferRadiusM: (bufferRadiusM) => set({ bufferRadiusM }),
   setBasemap: (basemap) => set({ basemap }),
   setTerrain: (terrain) => set({ terrain }),
   setLighting: (lighting) => set({ lighting }),
@@ -207,6 +193,5 @@ export const useAppStore = create<AppState>((set) => ({
   setRightPanelOpen: (rightPanelOpen) => set({ rightPanelOpen }),
   toggleLeftPanel: () => set((s) => ({ leftPanelOpen: !s.leftPanelOpen })),
   toggleRightPanel: () => set((s) => ({ rightPanelOpen: !s.rightPanelOpen })),
-  setBufferPreview: (bufferPreview) => set({ bufferPreview }),
   setAdminOverlay: (adminOverlay) => set({ adminOverlay }),
 }))

@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none" role="img" aria-label="DGGS">
+  <defs>
+    <linearGradient id="bg" x1="20" y1="8" x2="108" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1f6f66"/>
+      <stop offset="1" stop-color="#145a52"/>
+    </linearGradient>
+    <linearGradient id="globe" x1="32" y1="28" x2="96" y2="100" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5eead4"/>
+      <stop offset="1" stop-color="#14b8a6"/>
+    </linearGradient>
+    <clipPath id="disk">
+      <circle cx="64" cy="64" r="40"/>
+    </clipPath>
+  </defs>
+  <!-- opaque square for dialog/app icons (no alpha / no checkerboard) -->
+  <rect width="128" height="128" rx="28" fill="#12201e"/>
+  <circle cx="64" cy="64" r="52" fill="url(#bg)"/>
+  <circle cx="64" cy="64" r="52" stroke="#99f6e4" stroke-opacity="0.55" stroke-width="2.5"/>
+  <circle cx="64" cy="64" r="40" fill="url(#globe)" opacity="0.95"/>
+  <g clip-path="url(#disk)" stroke="#f0fdfa" stroke-opacity="0.9" stroke-width="1.6" fill="none">
+    <ellipse cx="64" cy="64" rx="14" ry="40"/>
+    <ellipse cx="64" cy="64" rx="28" ry="40"/>
+    <line x1="64" y1="24" x2="64" y2="104"/>
+    <ellipse cx="64" cy="64" rx="40" ry="14"/>
+    <ellipse cx="64" cy="64" rx="40" ry="28"/>
+    <line x1="24" y1="64" x2="104" y2="64"/>
+    <path d="M36 40h56v48H36z" stroke-opacity="0.55" stroke-width="1.2"/>
+    <path d="M36 56h56M36 72h56M54 40v48M74 40v48" stroke-opacity="0.4" stroke-width="1"/>
+  </g>
+  <circle cx="64" cy="64" r="40" stroke="#ecfdf5" stroke-opacity="0.45" stroke-width="1.5"/>
+</svg>
