@@ -310,10 +310,16 @@ export function layersFromRecords(records: GridCellRecord[]) {
   return [...bySource.entries()].map(([source, rows]) => {
     const levels = rows.map((r) => r.level)
     const old = prev.get(source)
+    const first = rows[0]
     return {
       id: source,
-      name: rows[0]?.label ?? source,
-      type: source,
+      name: first?.label ?? source,
+      type:
+        first?.ref?.kind === "raster"
+          ? first.attrs?.modality === "dem"
+            ? "dem"
+            : "raster"
+          : "vector",
       count: new Set(rows.map((r) => r.gridId)).size,
       levelMin: Math.min(...levels),
       levelMax: Math.max(...levels),

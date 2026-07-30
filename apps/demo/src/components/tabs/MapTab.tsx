@@ -18,7 +18,7 @@ export function MapTab() {
   const lighting = useAppStore((s) => s.lighting)
 
   return (
-    <div className="space-y-4">
+    <div className="h-full min-h-0 space-y-4 overflow-y-auto">
       <div className="space-y-2">
         <Label>底图</Label>
         <Select

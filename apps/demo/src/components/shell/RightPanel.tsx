@@ -59,7 +59,19 @@ function RecordRow({
         <p className="truncate text-muted-foreground">
           {r.source}
           {r.ref?.kind ? ` · ${r.ref.kind}` : ""}
+          {r.attrs.modality === "dem" &&
+          typeof r.attrs.zMin === "number" &&
+          typeof r.attrs.zMax === "number"
+            ? ` · z ${r.attrs.zMin}~${r.attrs.zMax}m`
+            : ""}
+          {r.fragment?.kind === "raster" ? " · chip" : ""}
           {Object.entries(r.attrs)
+            .filter(
+              ([k]) =>
+                !["modality", "bands", "zMin", "zMax", "zMean", "nodata"].includes(
+                  k
+                )
+            )
             .slice(0, 2)
             .map(([k, v]) => ` · ${k} ${v}`)
             .join("")}

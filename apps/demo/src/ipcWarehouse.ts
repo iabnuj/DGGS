@@ -13,7 +13,38 @@ type DesktopApi = {
   }
   openJson(): Promise<void>
   saveJson(): Promise<void>
-  pickImportFile(): Promise<{ name: string; text: string } | null>
+  pickImportFile(): Promise<{
+    kind?: "geojson" | "raster"
+    name: string
+    text?: string
+    filePath?: string
+  } | null>
+  probeRaster?(filePath: string): Promise<{
+    filePath: string
+    name: string
+    bbox: { west: number; south: number; east: number; north: number }
+    width: number
+    height: number
+    bands: number
+    pixelSizeM: number
+    suggestedLevel: number
+    estimatedCells: number | null
+    modality: "dem" | "ortho"
+    reason: string
+  }>
+  ingestRaster?(payload: {
+    filePath: string
+    level: number
+    source: string
+    label?: string
+  }): Promise<{
+    count: number
+    source: string
+    level: number
+    modality: string
+    firstGridId: string | null
+  }>
+  readChipDataUrl?(chipUri: string): Promise<string>
   confirm?(opts: {
     title?: string
     message: string
@@ -21,6 +52,9 @@ type DesktopApi = {
     type?: "none" | "info" | "error" | "question" | "warning"
   }): Promise<boolean>
   onDataChanged(handler: (payload: { reason: string }) => void): () => void
+  onImportProgress?(
+    handler: (payload: { progress: number }) => void
+  ): () => void
 }
 
 declare global {

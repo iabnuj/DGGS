@@ -56,7 +56,7 @@ export function DisplayTab() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="h-full min-h-0 space-y-4 overflow-y-auto">
       <div className="flex items-center justify-between gap-3">
         <Label htmlFor="show-grid">显示网格底座</Label>
         <Switch

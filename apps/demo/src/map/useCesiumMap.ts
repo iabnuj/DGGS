@@ -114,8 +114,9 @@ export function useCesiumMap(containerId = "cesiumContainer") {
 
     const applyCellFragments = () => {
       if (cancelled || viewer.isDestroyed()) return
-      fragmentLayer.sync(useAppStore.getState().cellFragmentPreviews)
-      viewer.scene.requestRender()
+      void fragmentLayer.sync(useAppStore.getState().cellFragmentPreviews).then(() => {
+        if (!cancelled && !viewer.isDestroyed()) viewer.scene.requestRender()
+      })
     }
 
     const refresh = (force = false) => {

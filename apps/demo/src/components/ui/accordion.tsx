@@ -81,7 +81,7 @@ export function Accordion({
               <div className="min-h-0 overflow-hidden">
                 <div
                   className={cn(
-                    "h-full overflow-y-auto border-t border-border/60 bg-background/40 px-3 py-3",
+                    "flex h-full min-h-0 flex-col overflow-hidden border-t border-border/60 bg-background/40 px-3 py-3",
                     "transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
                     open ? "translate-y-0" : "-translate-y-1"
                   )}

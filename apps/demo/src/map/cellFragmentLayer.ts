@@ -3,10 +3,13 @@ import {
   Cartesian3,
   Color,
   HeightReference,
+  ImageMaterialProperty,
+  Rectangle,
   type Entity,
   type Viewer,
 } from "cesium"
 import type { CellFragment, GridCellRecord } from "@dggs/grid-ingest"
+import { getDesktopApi } from "@/ipcWarehouse"
 
 function asLonLatPairs(coords: unknown): number[][] {
   if (!Array.isArray(coords)) return []
@@ -32,10 +35,11 @@ function previewKey(r: GridCellRecord): string {
  */
 export class CellFragmentLayer {
   private entities = new Map<string, Entity[]>()
+  private chipCache = new Map<string, string>()
 
   constructor(private viewer: Viewer) {}
 
-  sync(records: GridCellRecord[]) {
+  async sync(records: GridCellRecord[]) {
     if (this.viewer.isDestroyed()) return
     const wanted = new Set(records.map(previewKey))
 
@@ -48,7 +52,7 @@ export class CellFragmentLayer {
       if (this.entities.has(key)) continue
       if (!r.fragment) continue
       try {
-        const drawn = this.drawFragment(key, r.fragment)
+        const drawn = await this.drawFragment(key, r.fragment)
         if (drawn.length) this.entities.set(key, drawn)
       } catch (err) {
         console.error("[CellFragmentLayer] draw failed", key, err)
@@ -65,38 +69,75 @@ export class CellFragmentLayer {
 
   clearAll() {
     for (const key of [...this.entities.keys()]) this.clearKey(key)
+    this.chipCache.clear()
   }
 
-  private drawFragment(key: string, frag: CellFragment): Entity[] {
+  private async resolveChip(chipUri?: string): Promise<string | null> {
+    if (!chipUri) return null
+    const cached = this.chipCache.get(chipUri)
+    if (cached) return cached
+    const api = getDesktopApi()
+    if (!api?.readChipDataUrl) return null
+    const url = await api.readChipDataUrl(chipUri)
+    this.chipCache.set(chipUri, url)
+    return url
+  }
+
+  private async drawFragment(
+    key: string,
+    frag: CellFragment
+  ): Promise<Entity[]> {
     const color = Color.fromCssColorString("#fbbf24")
     const out: Entity[] = []
 
     if (frag.kind === "raster") {
-      // Placeholder outline until chip imagery is wired.
       const b = frag.bbox
-      out.push(
-        this.viewer.entities.add({
-          id: `frag:${key}:raster`,
-          polyline: {
-            positions: Cartesian3.fromDegreesArray([
-              b.west,
-              b.south,
-              b.east,
-              b.south,
-              b.east,
-              b.north,
-              b.west,
-              b.north,
-              b.west,
-              b.south,
-            ]),
-            width: 2,
-            material: color.withAlpha(0.7),
-            clampToGround: false,
-            arcType: ArcType.GEODESIC,
-          },
-        })
-      )
+      const chipUrl = await this.resolveChip(frag.chipUri)
+      if (chipUrl) {
+        out.push(
+          this.viewer.entities.add({
+            id: `frag:${key}:raster`,
+            rectangle: {
+              coordinates: Rectangle.fromDegrees(
+                b.west,
+                b.south,
+                b.east,
+                b.north
+              ),
+              material: new ImageMaterialProperty({
+                image: chipUrl,
+                transparent: true,
+              }),
+              height: 0,
+              heightReference: HeightReference.NONE,
+            },
+          })
+        )
+      } else {
+        out.push(
+          this.viewer.entities.add({
+            id: `frag:${key}:raster`,
+            polyline: {
+              positions: Cartesian3.fromDegreesArray([
+                b.west,
+                b.south,
+                b.east,
+                b.south,
+                b.east,
+                b.north,
+                b.west,
+                b.north,
+                b.west,
+                b.south,
+              ]),
+              width: 2,
+              material: color.withAlpha(0.7),
+              clampToGround: false,
+              arcType: ArcType.GEODESIC,
+            },
+          })
+        )
+      }
       return out
     }
 
@@ -104,7 +145,11 @@ export class CellFragmentLayer {
 
     if (frag.geometryType === "Point") {
       const c = frag.coordinates
-      if (!Array.isArray(c) || typeof c[0] !== "number" || typeof c[1] !== "number") {
+      if (
+        !Array.isArray(c) ||
+        typeof c[0] !== "number" ||
+        typeof c[1] !== "number"
+      ) {
         return out
       }
       out.push(

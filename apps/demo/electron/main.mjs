@@ -4,6 +4,11 @@ import { fileURLToPath } from "node:url"
 import fs from "node:fs/promises"
 import { existsSync, appendFileSync } from "node:fs"
 import { createRequire } from "node:module"
+import {
+  ingestRasterFile,
+  probeRaster,
+  resolveChipPath,
+} from "./rasterIngest.mjs"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const require = createRequire(import.meta.url)
@@ -211,17 +216,62 @@ function registerIpc() {
   })
   ipcMain.handle("desktop:pickImportFile", async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
-      title: "导入 GeoJSON / JSON",
+      title: "导入 GeoJSON / GeoTIFF",
       defaultPath: getImportDefaultPath(),
       filters: [
+        {
+          name: "支持的格式",
+          extensions: ["geojson", "json", "tif", "tiff"],
+        },
         { name: "GeoJSON / JSON", extensions: ["geojson", "json"] },
+        { name: "GeoTIFF", extensions: ["tif", "tiff"] },
       ],
       properties: ["openFile"],
     })
     if (result.canceled || !result.filePaths[0]) return null
     const filePath = result.filePaths[0]
+    const name = path.basename(filePath)
+    const ext = path.extname(filePath).toLowerCase()
+    if (ext === ".tif" || ext === ".tiff") {
+      return { kind: "raster", name, filePath }
+    }
     const text = await fs.readFile(filePath, "utf8")
-    return { name: path.basename(filePath), text }
+    return { kind: "geojson", name, text, filePath }
+  })
+  ipcMain.handle("desktop:probeRaster", async (_e, filePath) => {
+    return probeRaster({ filePath, isDev, dirname: __dirname })
+  })
+  ipcMain.handle("desktop:ingestRaster", async (_e, payload = {}) => {
+    const { filePath, level, source, label } = payload
+    if (!filePath || !source) throw new Error("缺少 filePath / source")
+    const userDataDir = app.getPath("userData")
+    const result = await ingestRasterFile({
+      filePath,
+      level,
+      source,
+      label,
+      userDataDir,
+      isDev,
+      dirname: __dirname,
+      onProgress: (p) => sendToRenderer("desktop:importProgress", { progress: p }),
+    })
+    const store = await ensureWarehouse()
+    const prior = await store.list({ source })
+    if (prior.length && store.delete) await store.delete(prior)
+    await store.put(result.records)
+    sendToRenderer("desktop:dataChanged", { reason: "raster-ingest" })
+    return {
+      count: result.count,
+      source: result.source,
+      level: result.level,
+      modality: result.modality,
+      firstGridId: result.records[0]?.gridId ?? null,
+    }
+  })
+  ipcMain.handle("desktop:readChipDataUrl", async (_e, chipUri) => {
+    const abs = resolveChipPath(app.getPath("userData"), chipUri)
+    const buf = await fs.readFile(abs)
+    return `data:image/png;base64,${buf.toString("base64")}`
   })
   ipcMain.handle("desktop:getSampleDataDir", async () => getSampleDataDir())
   ipcMain.handle(
