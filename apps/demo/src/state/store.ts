@@ -1,5 +1,6 @@
 import { create } from "zustand"
 import type { AnalysisResult } from "@/analysis"
+import type { GridCellRecord } from "@dggs/grid-ingest"
 
 export type ToolMode = "pan" | "pick" | "drawLine" | "drawPolygon"
 
@@ -39,14 +40,16 @@ export type LayerInfo = {
   count: number
   levelMin: number
   levelMax: number
-  /** Cyan grid-cell overlay for ingested codes. */
   visible: boolean
-  /** Original GIS geometries (points/lines/polygons) on the map. */
   featuresVisible: boolean
   source: string
 }
 
 export type BasemapId = "osm" | "sat" | "dark"
+
+export function fragmentPreviewKey(r: GridCellRecord): string {
+  return `${r.source}::${r.featureId ?? ""}::${r.gridId}`
+}
 
 type AppState = {
   gridVisible: boolean
@@ -61,8 +64,8 @@ type AppState = {
   gridCount: number
   fps: number
   layers: LayerInfo[]
-  /** 可见数据图层对应的入格编码（地图数据高亮） */
   dataOverlayCodes: string[]
+  cellFragmentPreviews: GridCellRecord[]
   analysisResult: AnalysisResult | null
   bufferRadiusM: number
   basemap: BasemapId
@@ -71,9 +74,7 @@ type AppState = {
   importProgress: number | null
   leftPanelOpen: boolean
   rightPanelOpen: boolean
-  /** 是否在地图上高亮缓冲邻域（点选默认否，调半径/手动生成时为是） */
   bufferPreview: boolean
-  /** 中文地名/路网注记叠加层 */
   adminOverlay: boolean
   setGridVisible: (v: boolean) => void
   setLevel: (v: number) => void
@@ -89,6 +90,13 @@ type AppState = {
   setLayers: (layers: LayerInfo[]) => void
   patchLayer: (id: string, patch: Partial<LayerInfo>) => void
   setDataOverlayCodes: (codes: string[]) => void
+  toggleCellFragmentPreview: (r: GridCellRecord) => void
+  /** Drop previews whose keys are in `keys`, then append `records`. */
+  setCellFragmentPreviewsForKeys: (
+    keys: Set<string>,
+    records: GridCellRecord[]
+  ) => void
+  clearCellFragmentPreviews: () => void
   setAnalysisResult: (r: AnalysisResult | null) => void
   setBufferRadiusM: (n: number) => void
   setBasemap: (b: BasemapId) => void
@@ -132,6 +140,7 @@ export const useAppStore = create<AppState>((set) => ({
   fps: 0,
   layers: [],
   dataOverlayCodes: [],
+  cellFragmentPreviews: [],
   analysisResult: null,
   bufferRadiusM: 500,
   basemap: "sat",
@@ -149,7 +158,13 @@ export const useAppStore = create<AppState>((set) => ({
   setDrawOptions: (patch) =>
     set((s) => ({ drawOptions: { ...s.drawOptions, ...patch } })),
   setToolMode: (toolMode) => set({ toolMode }),
-  setGridSet: (gridSet) => set({ gridSet, analysisResult: null, bufferPreview: false }),
+  setGridSet: (gridSet) =>
+    set({
+      gridSet,
+      analysisResult: null,
+      bufferPreview: false,
+      cellFragmentPreviews: [],
+    }),
   setCursor: (cursor) => set({ cursor }),
   setStatusText: (statusText) => set({ statusText }),
   setGridCount: (gridCount) => set({ gridCount }),
@@ -160,6 +175,28 @@ export const useAppStore = create<AppState>((set) => ({
       layers: s.layers.map((l) => (l.id === id ? { ...l, ...patch } : l)),
     })),
   setDataOverlayCodes: (dataOverlayCodes) => set({ dataOverlayCodes }),
+  toggleCellFragmentPreview: (r) =>
+    set((s) => {
+      const key = fragmentPreviewKey(r)
+      const exists = s.cellFragmentPreviews.some(
+        (x) => fragmentPreviewKey(x) === key
+      )
+      return {
+        cellFragmentPreviews: exists
+          ? s.cellFragmentPreviews.filter((x) => fragmentPreviewKey(x) !== key)
+          : [...s.cellFragmentPreviews, r],
+      }
+    }),
+  setCellFragmentPreviewsForKeys: (keys, records) =>
+    set((s) => ({
+      cellFragmentPreviews: [
+        ...s.cellFragmentPreviews.filter(
+          (x) => !keys.has(fragmentPreviewKey(x))
+        ),
+        ...records,
+      ],
+    })),
+  clearCellFragmentPreviews: () => set({ cellFragmentPreviews: [] }),
   setAnalysisResult: (analysisResult) => set({ analysisResult }),
   setBufferRadiusM: (bufferRadiusM) => set({ bufferRadiusM }),
   setBasemap: (basemap) => set({ basemap }),

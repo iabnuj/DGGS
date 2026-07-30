@@ -1,33 +1,32 @@
 import { useEffect, useState, type ReactNode } from "react"
 import { geosot } from "@dggs/grid-core"
-import { Copy, LocateFixed, PanelRightClose } from "lucide-react"
-import { useAppStore } from "@/state/store"
+import { Copy, LocateFixed, Map, PanelRightClose } from "lucide-react"
+import {
+  fragmentPreviewKey,
+  useAppStore,
+} from "@/state/store"
 import { Button } from "@/components/ui/button"
 import { getWarehouse } from "@/data/warehouseBoot"
-import { flyToCode } from "@/map/useCesiumMap"
-import {
-  mergeCellFeatureHits,
-  type CellFeatureHit,
-} from "@/data/cellFeatureHits"
+import { flyToCode, getMapRuntime } from "@/map/useCesiumMap"
 import type { GridCellRecord } from "@dggs/grid-ingest"
 
 export function RightPanel() {
   const open = useAppStore((s) => s.rightPanelOpen)
   const gridSet = useAppStore((s) => s.gridSet)
   const analysis = useAppStore((s) => s.analysisResult)
-  const [hits, setHits] = useState<CellFeatureHit[]>([])
+  const [records, setRecords] = useState<GridCellRecord[]>([])
+  const previews = useAppStore((s) => s.cellFragmentPreviews)
+  const previewKeys = new Set(previews.map(fragmentPreviewKey))
 
   useEffect(() => {
     if (!gridSet || gridSet.from !== "pick" || gridSet.codes.length !== 1) {
-      setHits([])
+      setRecords([])
       return
     }
     const code = gridSet.codes[0]!
     void getWarehouse()
       .getByCell(code)
-      .then((rows) => {
-        setHits(mergeCellFeatureHits(code, rows as GridCellRecord[]))
-      })
+      .then((rows) => setRecords(rows as GridCellRecord[]))
   }, [gridSet])
 
   if (!open) return null
@@ -122,6 +121,39 @@ export function RightPanel() {
 
   const code = gridSet.codes[0]!
   const bbox = geosot.bboxFromCode(code)
+  const previewable = records.filter((r) => r.fragment)
+  const cellPreviewKeys = new Set(previewable.map(fragmentPreviewKey))
+  const previewOnCount = previewable.filter((r) =>
+    previewKeys.has(fragmentPreviewKey(r))
+  ).length
+  const allPreviewsOn =
+    previewable.length > 0 && previewOnCount === previewable.length
+  const somePreviewsOn = previewOnCount > 0 && !allPreviewsOn
+
+  const applyCellFragmentPreviews = () => {
+    const rt = getMapRuntime()
+    if (rt?.applyCellFragments) {
+      rt.applyCellFragments()
+      return true
+    }
+    useAppStore.getState().setStatusText("地图未就绪，请刷新桌面端后再上图")
+    return false
+  }
+
+  const toggleAllPreviews = () => {
+    const on = !allPreviewsOn
+    useAppStore
+      .getState()
+      .setCellFragmentPreviewsForKeys(cellPreviewKeys, on ? previewable : [])
+    if (!applyCellFragmentPreviews()) return
+    useAppStore
+      .getState()
+      .setStatusText(
+        on
+          ? `已全部上图 ${previewable.length} 条（格内片段）`
+          : "已取消本格全部上图"
+      )
+  }
 
   return (
     <PanelShell
@@ -166,34 +198,130 @@ export function RightPanel() {
             </div>
           </dl>
           <div className="flex max-h-[40vh] flex-col gap-1.5 overflow-y-auto">
-            {hits.length === 0 ? (
-              <span className="text-xs text-muted-foreground">暂无融合属性</span>
+            {records.length === 0 ? (
+              <span className="text-xs text-muted-foreground">暂无入格记录</span>
             ) : (
               <>
-                <p className="text-[10px] text-muted-foreground">
-                  本格关联 {hits.length} 条要素（入格 + 几何相交）
-                </p>
-                {hits.map((h, i) => (
-                  <div
-                    key={`${h.source}-${h.featureId}-${i}`}
-                    className="rounded-md border border-border/70 bg-muted/40 px-2 py-1.5 text-[11px] leading-snug"
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[10px] text-muted-foreground">
+                    本格入格 {records.length} 条 · 上图仅画入库剪裁片段
+                    {somePreviewsOn
+                      ? ` · 已上图 ${previewOnCount}/${previewable.length}`
+                      : ""}
+                  </p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className={
+                      allPreviewsOn
+                        ? "h-7 shrink-0 gap-1 px-2 text-[11px] bg-amber-500/20 text-amber-300"
+                        : somePreviewsOn
+                          ? "h-7 shrink-0 gap-1 px-2 text-[11px] text-amber-400/80"
+                          : "h-7 shrink-0 gap-1 px-2 text-[11px]"
+                    }
+                    disabled={previewable.length === 0}
+                    title={
+                      previewable.length === 0
+                        ? "无可上图片段"
+                        : allPreviewsOn
+                          ? "取消本格全部上图"
+                          : "本格全部上图"
+                    }
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      toggleAllPreviews()
+                    }}
                   >
-                    <p className="truncate font-medium text-foreground/90">
-                      {h.label || h.source}
-                      <span className="ml-1 font-normal text-muted-foreground">
-                        #{h.featureId}
-                      </span>
-                    </p>
-                    <p className="truncate text-muted-foreground">
-                      {h.source}
-                      {Object.entries(h.attrs)
-                        .slice(0, 3)
-                        .map(([k, v]) => ` · ${k} ${v}`)
-                        .join("")}
-                      {h.fromGeometry && !h.record ? " · 几何相交" : ""}
-                    </p>
-                  </div>
-                ))}
+                    <Map className="h-3.5 w-3.5" />
+                    {allPreviewsOn ? "取消全部" : "全部上图"}
+                  </Button>
+                </div>
+                {records.map((r, i) => {
+                  const key = fragmentPreviewKey(r)
+                  const on = previewKeys.has(key)
+                  const sameCell = r.gridId === code
+                  const canPreview = Boolean(r.fragment)
+                  return (
+                    <div
+                      key={`${key}-${i}`}
+                      className="flex items-start gap-1 rounded-md border border-border/70 bg-muted/40 px-2 py-1.5 text-[11px] leading-snug"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-medium text-foreground/90">
+                          {r.label || r.source}
+                          {r.featureId ? (
+                            <span className="ml-1 font-normal text-muted-foreground">
+                              #{r.featureId}
+                            </span>
+                          ) : null}
+                        </p>
+                        <p className="truncate text-muted-foreground">
+                          {r.source}
+                          {r.ref?.kind ? ` · ${r.ref.kind}` : ""}
+                          {Object.entries(r.attrs)
+                            .slice(0, 2)
+                            .map(([k, v]) => ` · ${k} ${v}`)
+                            .join("")}
+                          {!sameCell ? " · 卷级" : ""}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className={
+                          on
+                            ? "h-7 w-7 shrink-0 bg-amber-500/20 text-amber-300"
+                            : canPreview
+                              ? "h-7 w-7 shrink-0"
+                              : "h-7 w-7 shrink-0 opacity-40"
+                        }
+                        aria-disabled={!canPreview}
+                        title={
+                          !r.fragment
+                            ? "无格内片段（请按新契约重新导入）"
+                            : on
+                              ? "取消上图"
+                              : sameCell
+                                ? "上图（仅格内片段）"
+                                : "上图（卷级：画该条入库剪裁片段）"
+                        }
+                        onClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          if (!canPreview) {
+                            useAppStore
+                              .getState()
+                              .setStatusText("无法上图：无格内片段，请重新导入")
+                            return
+                          }
+                          useAppStore.getState().toggleCellFragmentPreview(r)
+                          if (!applyCellFragmentPreviews()) return
+                          const nowOn = useAppStore
+                            .getState()
+                            .cellFragmentPreviews.some(
+                              (x) => fragmentPreviewKey(x) === key
+                            )
+                          useAppStore
+                            .getState()
+                            .setStatusText(
+                              nowOn
+                                ? `已上图 ${r.featureId ?? r.label ?? r.source}（格内片段）`
+                                : `已取消上图 ${r.featureId ?? r.label ?? r.source}`
+                            )
+                        }}
+                      >
+                        <Map
+                          className={
+                            on ? "h-3.5 w-3.5 text-amber-400" : "h-3.5 w-3.5"
+                          }
+                        />
+                      </Button>
+                    </div>
+                  )
+                })}
               </>
             )}
           </div>

@@ -9,7 +9,14 @@ export class MemoryWarehouse implements GridWarehouse {
 
   async put(records: GridCellRecord[]): Promise<void> {
     for (const r of records) {
-      this.rows.set(recordKey(r), { ...r, attrs: { ...r.attrs } })
+      this.rows.set(recordKey(r), {
+        ...r,
+        attrs: { ...r.attrs },
+        ref: r.ref ? { ...r.ref } : undefined,
+        fragment: r.fragment
+          ? (JSON.parse(JSON.stringify(r.fragment)) as GridCellRecord["fragment"])
+          : undefined,
+      })
     }
   }
 

@@ -1,8 +1,13 @@
 import {
+  clipLineStringToBBox,
+  clipRingToBBox,
   ingestBBox,
   ingestPoint,
+  pointInBBox,
+  type CellRef,
   type GridCellRecord,
 } from "@dggs/grid-ingest"
+import { geosot } from "@dggs/grid-core"
 import { useAppStore } from "@/state/store"
 
 type Feature = {
@@ -60,42 +65,87 @@ function asPairs(coords: unknown): number[][] {
   )
 }
 
-function lineSamples(
+function makeRef(
+  source: string,
+  featureId: string,
+  label?: string
+): CellRef {
+  return {
+    objectId: featureId,
+    uri: `source://${source}/${featureId}`,
+    kind: "vector",
+  }
+}
+
+/** Dense sample → unique cell codes crossed by a polyline. */
+function cellsAlongLine(coords: number[][], level: number): string[] {
+  const seen = new Set<string>()
+  const cellDeg = 180 / 2 ** Math.max(1, level)
+  const stepDeg = Math.max(cellDeg * 0.35, 1e-7)
+  const push = (lon: number, lat: number) => {
+    seen.add(geosot.locToQuaternary(lon, lat, level))
+  }
+  for (let i = 0; i < coords.length - 1; i++) {
+    const [lon0, lat0] = coords[i]!
+    const [lon1, lat1] = coords[i + 1]!
+    const dLon = lon1! - lon0!
+    const dLat = lat1! - lat0!
+    const midLat = ((lat0! + lat1!) / 2) * (Math.PI / 180)
+    const lenDeg = Math.hypot(dLon * Math.cos(midLat), dLat)
+    const n = Math.max(1, Math.ceil(lenDeg / stepDeg))
+    for (let s = 0; s <= n; s++) {
+      const t = s / n
+      push(lon0! + dLon * t, lat0! + dLat * t)
+    }
+  }
+  if (coords.length === 1) push(coords[0]![0]!, coords[0]![1]!)
+  return [...seen]
+}
+
+/**
+ * Ingest a line: occupancy per crossed cell + clipped fragment + original ref.
+ */
+function ingestLineClipped(
   coords: number[][],
   level: number,
   source: string,
   label: string | undefined,
   featureId: string,
-  attrs: Record<string, string | number | boolean> = {}
-) {
+  attrs: Record<string, string | number | boolean>
+): GridCellRecord[] {
+  const ref = makeRef(source, featureId, label)
   const out: GridCellRecord[] = []
-  const seen = new Set<string>()
-  for (let i = 0; i < coords.length - 1; i++) {
-    const [lon0, lat0] = coords[i]!
-    const [lon1, lat1] = coords[i + 1]!
-    for (let s = 0; s <= 16; s++) {
-      const t = s / 16
-      const lon = lon0! + (lon1! - lon0!) * t
-      const lat = lat0! + (lat1! - lat0!) * t
-      const rec = ingestPoint({
-        lon,
-        lat,
-        level,
-        source,
-        label,
-        featureId,
-        attrs,
-      })
-      if (!seen.has(rec.gridId)) {
-        seen.add(rec.gridId)
-        out.push(rec)
-      }
-    }
+  for (const gridId of cellsAlongLine(coords, level)) {
+    const cell = geosot.bboxFromCode(gridId)
+    const parts = clipLineStringToBBox(coords, cell)
+    if (parts.length === 0) continue
+    const fragment =
+      parts.length === 1
+        ? {
+            kind: "vector" as const,
+            geometryType: "LineString" as const,
+            coordinates: parts[0],
+          }
+        : {
+            kind: "vector" as const,
+            geometryType: "MultiLineString" as const,
+            coordinates: parts,
+          }
+    out.push({
+      gridId,
+      level,
+      source,
+      featureId,
+      label,
+      attrs,
+      ref,
+      fragment,
+    })
   }
   return out
 }
 
-function coverRing(
+function ingestPolygonClipped(
   ring: number[][],
   level: number,
   source: string,
@@ -115,17 +165,37 @@ function coverRing(
     north = Math.max(north, lat!)
   }
   if (!(west < east && south < north)) return []
-  return ingestBBox({
+
+  const ref = makeRef(source, featureId, label)
+  // Cover by bbox then clip ring to each cell (approximation of true polygon cover).
+  const base = ingestBBox({
     bbox: { west, south, east, north },
     level,
     source,
     label,
     featureId,
     attrs,
+    ref,
   })
+  const out: GridCellRecord[] = []
+  for (const r of base) {
+    const cell = geosot.bboxFromCode(r.gridId)
+    const clipped = clipRingToBBox(ring, cell)
+    if (clipped.length < 4) continue
+    out.push({
+      ...r,
+      ref,
+      fragment: {
+        kind: "vector",
+        geometryType: "Polygon",
+        coordinates: [clipped],
+      },
+    })
+  }
+  return out
 }
 
-/** Convert GeoJSON text into GridCellRecords (demo ingest). */
+/** Convert GeoJSON text into GridCellRecords with ref + clipped fragment. */
 export function ingestGeoJsonText(
   text: string,
   options: { level: number; source: string; label?: string }
@@ -149,23 +219,35 @@ export function ingestGeoJsonText(
     const name =
       label ??
       (typeof f.properties?.name === "string" ? f.properties.name : source)
+    const ref = makeRef(source, featureId, name)
 
     if (g.type === "Point") {
       const coords = g.coordinates
       if (!Array.isArray(coords) || typeof coords[0] !== "number") return
+      const lon = coords[0]
+      const lat = coords[1] as number
       records.push(
         ingestPoint({
-          lon: coords[0],
-          lat: coords[1] as number,
+          lon,
+          lat,
           level,
           source,
           label: name,
           featureId,
           attrs,
+          ref,
+          fragment: {
+            kind: "vector",
+            geometryType: "Point",
+            coordinates: [lon, lat],
+          },
         })
       )
     } else if (g.type === "MultiPoint") {
       for (const c of asPairs(g.coordinates)) {
+        if (!pointInBBox(c[0]!, c[1]!, { west: -180, south: -90, east: 180, north: 90 })) {
+          // always true; keep for symmetry
+        }
         records.push(
           ingestPoint({
             lon: c[0]!,
@@ -175,31 +257,39 @@ export function ingestGeoJsonText(
             label: name,
             featureId,
             attrs,
+            ref,
           })
         )
       }
     } else if (g.type === "LineString") {
       records.push(
-        ...lineSamples(asPairs(g.coordinates), level, source, name, featureId, attrs)
+        ...ingestLineClipped(asPairs(g.coordinates), level, source, name, featureId, attrs)
       )
     } else if (g.type === "MultiLineString") {
       if (!Array.isArray(g.coordinates)) return
       for (const line of g.coordinates) {
         records.push(
-          ...lineSamples(asPairs(line), level, source, name, featureId, attrs)
+          ...ingestLineClipped(asPairs(line), level, source, name, featureId, attrs)
         )
       }
     } else if (g.type === "Polygon") {
       if (!Array.isArray(g.coordinates)) return
       records.push(
-        ...coverRing(asPairs(g.coordinates[0]), level, source, name, featureId, attrs)
+        ...ingestPolygonClipped(
+          asPairs(g.coordinates[0]),
+          level,
+          source,
+          name,
+          featureId,
+          attrs
+        )
       )
     } else if (g.type === "MultiPolygon") {
       if (!Array.isArray(g.coordinates)) return
       for (const poly of g.coordinates) {
         if (!Array.isArray(poly)) continue
         records.push(
-          ...coverRing(asPairs(poly[0]), level, source, name, featureId, attrs)
+          ...ingestPolygonClipped(asPairs(poly[0]), level, source, name, featureId, attrs)
         )
       }
     }

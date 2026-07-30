@@ -11,6 +11,7 @@ import {
 import { geosot } from "@dggs/grid-core"
 import { GridLayer } from "@/grid/gridLayer"
 import { GisFeatureLayer } from "@/map/gisFeatureLayer"
+import { CellFragmentLayer } from "@/map/cellFragmentLayer"
 import { levelFromHeight } from "@/grid/levelFromHeight"
 import { createViewer } from "@/map/createViewer"
 import { applyBasemap, applyAdminOverlay, applyLighting, applyTerrain } from "@/map/basemap"
@@ -40,6 +41,8 @@ export type MapRuntime = {
   applyDataOverlay: (force?: boolean) => void
   /** Draw/hide original GIS feature geometries. */
   applyGisFeatures: () => void
+  /** Draw cell-local fragments from detail-panel 上图. */
+  applyCellFragments: () => void
 }
 
 let runtime: MapRuntime | null = null
@@ -118,6 +121,7 @@ export function useCesiumMap(containerId = "cesiumContainer") {
     const viewer = createViewer(el)
     const gridLayer = new GridLayer(viewer)
     const gisLayer = new GisFeatureLayer(viewer)
+    const fragmentLayer = new CellFragmentLayer(viewer)
     loadFeatureStoreFromLocalStorage()
 
     const syncHighlights = () => {
@@ -148,6 +152,12 @@ export function useCesiumMap(containerId = "cesiumContainer") {
     const applyGisFeatures = () => {
       if (cancelled || viewer.isDestroyed()) return
       gisLayer.sync(useAppStore.getState().layers)
+    }
+
+    const applyCellFragments = () => {
+      if (cancelled || viewer.isDestroyed()) return
+      fragmentLayer.sync(useAppStore.getState().cellFragmentPreviews)
+      viewer.scene.requestRender()
     }
 
     const refresh = (force = false) => {
@@ -215,6 +225,7 @@ export function useCesiumMap(containerId = "cesiumContainer") {
       applyHighlights,
       applyDataOverlay,
       applyGisFeatures,
+      applyCellFragments,
     }
 
     let refreshTimer: number | undefined
@@ -294,6 +305,11 @@ export function useCesiumMap(containerId = "cesiumContainer") {
         })
       }
       if (state.lighting !== prev.lighting) applyLighting(viewer, state.lighting)
+    })
+
+    const unsubFragments = useAppStore.subscribe((state, prev) => {
+      if (state.cellFragmentPreviews === prev.cellFragmentPreviews) return
+      applyCellFragments()
     })
 
     let bufferTimer: number | undefined
@@ -400,11 +416,13 @@ export function useCesiumMap(containerId = "cesiumContainer") {
       unsubTool()
       unsubBasemap()
       unsubBuffer()
+      unsubFragments()
       unwatch()
       clearDraw()
       handler.destroy()
       viewer.clock.onTick.removeEventListener(onTick)
       gisLayer.clearAll()
+      fragmentLayer.clearAll()
       if (!viewer.isDestroyed()) viewer.destroy()
       if (runtime?.viewer === viewer) runtime = null
       readyRef.current = false

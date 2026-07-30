@@ -1,12 +1,13 @@
-import { cover } from "@dggs/grid-core"
+import { cover, geosot } from "@dggs/grid-core"
 import type { BBoxInput, GridCellRecord } from "./types"
 
 /**
- * Cover a WGS84 bbox at `level` and emit one record per cell
- * (same attrs/source/time hung on every covered cell).
+ * Cover a WGS84 bbox at `level` and emit one record per cell.
+ * Each cell gets a polygon fragment = the cell rectangle (coverage chip)
+ * plus optional ref from meta.
  */
 export function ingestBBox(input: BBoxInput): GridCellRecord[] {
-  const { bbox, level, source, time, label, featureId, attrs } = input
+  const { bbox, level, source, time, label, featureId, attrs, ref } = input
   if (!source) {
     throw new Error("ingestBBox: source is required")
   }
@@ -22,13 +23,30 @@ export function ingestBBox(input: BBoxInput): GridCellRecord[] {
 
   const codes = cover.coverBBox(bbox, level)
   const shared = attrs ?? {}
-  return codes.map((gridId) => ({
-    gridId,
-    level,
-    time,
-    source,
-    featureId,
-    label,
-    attrs: { ...shared },
-  }))
+  return codes.map((gridId) => {
+    const cell = geosot.bboxFromCode(gridId)
+    return {
+      gridId,
+      level,
+      time,
+      source,
+      featureId,
+      label,
+      attrs: { ...shared },
+      ref,
+      fragment: {
+        kind: "vector" as const,
+        geometryType: "Polygon" as const,
+        coordinates: [
+          [
+            [cell.west, cell.south],
+            [cell.east, cell.south],
+            [cell.east, cell.north],
+            [cell.west, cell.north],
+            [cell.west, cell.south],
+          ],
+        ],
+      },
+    }
+  })
 }

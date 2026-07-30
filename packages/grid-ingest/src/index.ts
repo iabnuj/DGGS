@@ -3,6 +3,8 @@ export type {
   Attrs,
   BBox,
   BBoxInput,
+  CellFragment,
+  CellRef,
   GridCellRecord,
   IngestMeta,
   PointInput,
@@ -11,3 +13,8 @@ export type {
 export { ingestPoint, ingestPoints } from "./ingestPoint"
 export { ingestBBox } from "./ingestBBox"
 export { groupByGrid, recordsForCell } from "./query"
+export {
+  clipLineStringToBBox,
+  clipRingToBBox,
+  pointInBBox,
+} from "./clip"
