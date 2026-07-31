@@ -22,8 +22,8 @@ export function LeftDrawer() {
             className="h-9 w-9 shrink-0 rounded-full"
           />
           <div className="min-w-0">
-            <p className="text-lg font-semibold tracking-wide text-foreground">DGGS</p>
-            <p className="text-xs text-muted-foreground">GeoSOT 网格演示</p>
+            <p className="text-lg font-semibold tracking-wide text-foreground">格网引擎</p>
+            <p className="text-xs text-muted-foreground">GeoSOT</p>
           </div>
         </div>
         <Button

@@ -1,0 +1,71 @@
+{
+  "name": "hejing-xinjiang",
+  "title": "新疆巴州和静县测试数据",
+  "crs": "EPSG:4326",
+  "county_bbox": {
+    "west": 82.467,
+    "south": 42.083,
+    "east": 87.541,
+    "north": 43.568,
+    "note": "全县范围约 3.4 万 km²，不适合整县下载矢量/影像；仅作参考。"
+  },
+  "aoi": {
+    "name": "和静镇县城周边",
+    "center": {
+      "lng": 86.398,
+      "lat": 42.313
+    },
+    "west": 86.3,
+    "south": 42.24,
+    "east": 86.5,
+    "north": 42.38,
+    "note": "约 16×15 km，用于桌面端路网/建筑/POI/DEM/影像联调。"
+  },
+  "layers": {
+    "roads": {
+      "format": [
+        "geojson",
+        "shp"
+      ],
+      "source": "OpenStreetMap",
+      "license": "ODbL"
+    },
+    "buildings": {
+      "format": [
+        "geojson",
+        "shp"
+      ],
+      "source": "OpenStreetMap",
+      "license": "ODbL"
+    },
+    "pois": {
+      "format": [
+        "geojson",
+        "shp"
+      ],
+      "source": "OpenStreetMap",
+      "license": "ODbL"
+    },
+    "dem": {
+      "format": [
+        "tif"
+      ],
+      "source": "Copernicus GLO-30",
+      "license": "Copernicus",
+      "file": "raster/dem_glo30.tif",
+      "status": "downloaded",
+      "bytes": 1003188
+    },
+    "ortho": {
+      "format": [
+        "tif"
+      ],
+      "source": "Sentinel-2 L2A",
+      "license": "Copernicus Sentinel",
+      "file": "raster/ortho_s2_rgb.tif",
+      "status": "downloaded",
+      "bytes": 7245059
+    }
+  },
+  "updated": "2026-07-29"
+}

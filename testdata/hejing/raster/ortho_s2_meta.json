@@ -1,0 +1,24 @@
+{
+  "id": "S2B_MSIL2A_20260701T050649_R019_T45TVG_20260701T085114",
+  "datetime": "2026-07-01T05:06:49.024000Z",
+  "eo:cloud_cover": 0.032651,
+  "bbox_src": [
+    85.7835167,
+    41.4575152,
+    87.1186942,
+    42.4526297
+  ],
+  "aoi": {
+    "name": "和静镇县城周边",
+    "center": {
+      "lng": 86.398,
+      "lat": 42.313
+    },
+    "west": 86.3,
+    "south": 42.24,
+    "east": 86.5,
+    "north": 42.38,
+    "note": "约 16×15 km，用于桌面端路网/建筑/POI/DEM/影像联调。"
+  },
+  "source": "Microsoft Planetary Computer sentinel-2-l2a"
+}

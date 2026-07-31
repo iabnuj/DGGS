@@ -18,7 +18,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const require = createRequire(import.meta.url)
 const isDev = !app.isPackaged
 
-app.setName("DGGS Demo")
+app.setName("格网引擎")
 
 const logPath = path.join(app.getPath("userData"), "dggs-main.log")
 
@@ -125,13 +125,13 @@ function createMenu() {
       label: "帮助",
       submenu: [
         {
-          label: "关于 DGGS Demo",
+          label: "关于格网引擎",
           click: () => {
             dialog.showMessageBox({
               type: "info",
               title: "关于",
-              message: "DGGS Demo",
-              detail: `版本 ${app.getVersion()}\nGeoSOT + Cesium 桌面演示\n本地仓：SQLite\n样例数据：${getSampleDataDir()}`,
+              message: "格网引擎",
+              detail: `版本 ${app.getVersion()}\nGeoSOT + Cesium\n本地仓：SQLite\n样例数据：${getSampleDataDir()}`,
               icon: getAppIconPath(),
             })
           },
@@ -326,7 +326,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
-    title: "DGGS Demo",
+    title: "格网引擎",
     icon: getAppIconPath(),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),

@@ -3,3 +3,7 @@ node_modules
 dist
 *.log
 .pnpm-store
+
+# 本地方案/领域文档（不入库）
+docs/格网孪生引擎子系统建设方案.md
+docs/数字战场-DGGS领域梳理.md

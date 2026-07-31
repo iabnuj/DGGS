@@ -1,5 +1,7 @@
 appId: com.dggs.demo
-productName: DGGS Demo
+productName: 格网引擎
+executableName: 格网引擎
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}
 directories:
   output: release
 files:
