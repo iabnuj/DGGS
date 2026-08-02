@@ -253,11 +253,11 @@ export function DisplayTab() {
           }}
         />
       </div>
-      {extrudeByAttr && (
-        <p className="text-[10px] text-muted-foreground">
-          开启地形贴地时拉伸暂不生效，会按平面贴地绘制。
-        </p>
-      )}
+      <p className="text-[10px] text-muted-foreground">
+        {extrudeByAttr
+          ? "开启后网格立体拉伸；地形贴地时仍按平面绘制。"
+          : "关闭时网格平面绘制。"}
+      </p>
     </div>
   )
 }

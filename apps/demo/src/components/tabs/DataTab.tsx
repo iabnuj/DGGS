@@ -4,7 +4,9 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
+import { FieldStylePopover } from "@/components/shell/FieldStylePopover"
 import { getDesktopApi, isDesktopApp, confirmAction } from "@/ipcWarehouse"
+import { ingestFieldCsv } from "@dggs/grid-ingest"
 import { ingestGeoJsonText } from "@/data/ingestGeoJson"
 import {
   cellSizeMeters,
@@ -22,11 +24,20 @@ import {
   syncLayersFromWarehouse,
 } from "@/data/warehouseBoot"
 import { useAppStore } from "@/state/store"
-import { flyToCode, getMapRuntime } from "@/map/useCesiumMap"
+import { flyToCode, flyToCodes, getMapRuntime } from "@/map/useCesiumMap"
 import type { GridCellRecord } from "@dggs/grid-ingest"
 
 type PendingGeoJson = {
   kind: "geojson"
+  name: string
+  text: string
+  suggested: number
+  reason: string
+  level: number
+}
+
+type PendingCsv = {
+  kind: "csv"
   name: string
   text: string
   suggested: number
@@ -45,7 +56,7 @@ type PendingRaster = {
   modality: string
 }
 
-type PendingImport = PendingGeoJson | PendingRaster
+type PendingImport = PendingGeoJson | PendingCsv | PendingRaster
 
 function formatCellEdge(level: number): string {
   const m = cellSizeMeters(level)
@@ -84,6 +95,22 @@ export function DataTab() {
     useAppStore
       .getState()
       .setStatusText(`已解析 ${name} · ${suggestion.reason} · 请确认后入格`)
+  }
+
+  const stageCsv = (name: string, text: string) => {
+    // 0.1° 格点约 11km → 建议 L12；可再调
+    const suggested = 12
+    setPending({
+      kind: "csv",
+      name,
+      text,
+      suggested,
+      reason: "CSV 标量场（lon/lat/value）· 建议按点距选级",
+      level: suggested,
+    })
+    useAppStore
+      .getState()
+      .setStatusText(`已读取 ${name} · CSV 标量场 · 请确认后入格`)
   }
 
   const stageRaster = async (name: string, filePath: string) => {
@@ -134,10 +161,34 @@ export function DataTab() {
         await importRecords(records)
         useAppStore.getState().patchLayer(source, { featuresVisible: true })
         applyGisFeaturesNow()
-        const first = records[0]?.gridId
-        if (first) flyToCode(first, 80_000)
+        flyToCodes(records.map((r) => r.gridId))
         useAppStore.getState().setStatusText(
           `已导入 ${records.length} 条格 @ L${level} · 要素 ${featCount} · 已打开要素显示`
+        )
+        return
+      }
+
+      if (current.kind === "csv") {
+        const { name, text, level } = current
+        useAppStore.getState().setStatusText(`正在入格标量场 ${name} @ L${level}…`)
+        const source = name.replace(/\.csv$/i, "") || "field"
+        const parsed = ingestFieldCsv(text, {
+          source,
+          level,
+          label: name.replace(/\.csv$/i, ""),
+        })
+        const wh = getWarehouse()
+        const prior = (await wh.list({ source })) as GridCellRecord[]
+        if (prior.length && wh.delete) await wh.delete(prior)
+        await importRecords(parsed.records)
+        useAppStore.getState().addFieldSource(source)
+        // 同源重导时 fieldSources 引用可能不变，需强制重建色斑
+        getMapRuntime()?.rebuildFieldView?.()
+        flyToCodes(parsed.records.map((r) => r.gridId))
+        useAppStore.getState().setStatusText(
+          `已导入标量场 ${parsed.cellCount} 格 @ L${level}（${parsed.pointCount} 点 · 列 ${parsed.valueColumn}${
+            parsed.unit ? ` · ${parsed.unit}` : ""
+          }）`
         )
         return
       }
@@ -158,11 +209,22 @@ export function DataTab() {
       })
       await syncLayersFromWarehouse()
       await refreshDataOverlay()
+      // 单波段 DEM/标量：加入场渲染源
+      if (result.modality === "dem") {
+        useAppStore.getState().addFieldSource(source)
+        getMapRuntime()?.rebuildFieldView?.()
+      }
       useAppStore.getState().setImportProgress(100)
       window.setTimeout(() => useAppStore.getState().setImportProgress(null), 600)
-      if (result.firstGridId) flyToCode(result.firstGridId, 80_000)
+      {
+        const rows = (await getWarehouse().list({
+          source,
+        })) as GridCellRecord[]
+        if (rows.length > 0) flyToCodes(rows.map((r) => r.gridId))
+        else if (result.firstGridId) flyToCode(result.firstGridId, 80_000)
+      }
       useAppStore.getState().setStatusText(
-        `已导入 ${result.modality} ${result.count} 格 @ L${result.level}（含 chip）`
+        `已导入 ${result.modality === "dem" ? "标量场" : result.modality} ${result.count} 格 @ L${result.level}`
       )
     } catch (err) {
       useAppStore.getState().setImportProgress(null)
@@ -181,6 +243,10 @@ export function DataTab() {
       return
     }
     const text = await file.text()
+    if (lower.endsWith(".csv")) {
+      stageCsv(file.name, text)
+      return
+    }
     stageGeoJson(file.name, text)
   }
 
@@ -193,6 +259,10 @@ export function DataTab() {
         await stageRaster(picked.name, picked.filePath)
         return
       }
+      if (picked.kind === "csv" && picked.text) {
+        stageCsv(picked.name, picked.text)
+        return
+      }
       if (picked.text) {
         if (picked.fromShapefile) {
           useAppStore
@@ -200,6 +270,10 @@ export function DataTab() {
             .setStatusText(
               `已转换 Shapefile（${picked.convertVia ?? "unknown"}）· ${picked.name}`
             )
+        }
+        if (picked.name.toLowerCase().endsWith(".csv")) {
+          stageCsv(picked.name, picked.text)
+          return
         }
         stageGeoJson(picked.name, picked.text)
       }
@@ -213,7 +287,7 @@ export function DataTab() {
       <input
         ref={fileRef}
         type="file"
-        accept=".json,.geojson,application/geo+json,application/json"
+        accept=".json,.geojson,.csv,application/geo+json,application/json,text/csv"
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0]
@@ -224,7 +298,9 @@ export function DataTab() {
       <div className="shrink-0 space-y-3">
       <Button type="button" className="w-full" onClick={() => void onImportClick()}>
         导入数据{" "}
-        {isDesktopApp() ? "(GeoJSON / SHP / GeoTIFF)" : "(GeoJSON)"}
+        {isDesktopApp()
+          ? "(GeoJSON / SHP / GeoTIFF / CSV)"
+          : "(GeoJSON / CSV)"}
       </Button>
       {progress != null && (
         <div className="h-1.5 overflow-hidden rounded-full bg-muted">
@@ -272,7 +348,9 @@ export function DataTab() {
                 建议 L{pending.suggested}；可拖动修改后再确认入格
                 {pending.kind === "raster"
                   ? "（栅格仅桌面端，单次最多约 4000 格）"
-                  : ""}
+                  : pending.kind === "csv"
+                    ? "（CSV：同格多点取均值）"
+                    : ""}
               </p>
             </div>
             <div className="flex gap-2">
@@ -311,7 +389,7 @@ export function DataTab() {
                   <CardTitle className="flex items-center justify-between gap-2">
                     <span className="truncate">{layer.name}</span>
                     <span className="shrink-0 text-[10px] font-normal text-muted-foreground">
-                      {layer.type}
+                      {layer.type === "field" ? "标量场" : layer.type}
                     </span>
                   </CardTitle>
                   <CardDescription>
@@ -326,19 +404,30 @@ export function DataTab() {
                     type="button"
                     size="icon"
                     variant="ghost"
-                    title={layer.visible ? "隐藏入格高亮" : "显示入格高亮"}
+                    title={layer.visible ? "隐藏" : "显示"}
                     onClick={() => {
                       void (async () => {
                         const nextVisible = !layer.visible
                         useAppStore.getState().patchLayer(layer.id, {
                           visible: nextVisible,
                         })
+                        // 场数据层：切换 fieldSources
+                        if (layer.type === "field") {
+                          const s = useAppStore.getState()
+                          if (nextVisible) {
+                            s.addFieldSource(layer.source)
+                          } else {
+                            s.removeFieldSource(layer.source)
+                          }
+                          return
+                        }
+                        // 常规数据层：刷新 dataOverlay
                         const codes = await refreshDataOverlay()
                         const rows = (await getWarehouse().list({
                           source: layer.source,
                         })) as GridCellRecord[]
-                        if (nextVisible && rows[0]) {
-                          flyToCode(rows[0].gridId, 60_000)
+                        if (nextVisible && rows.length > 0) {
+                          flyToCodes(rows.map((r) => r.gridId))
                         }
                         useAppStore
                           .getState()
@@ -356,6 +445,12 @@ export function DataTab() {
                       <EyeOff className="h-4 w-4" />
                     )}
                   </Button>
+                  {layer.type === "field" && (
+                    <FieldStylePopover
+                      source={layer.source}
+                      label={layer.name}
+                    />
+                  )}
                   <Button
                     type="button"
                     size="icon"
@@ -404,7 +499,7 @@ export function DataTab() {
                     type="button"
                     size="icon"
                     variant="ghost"
-                    title="定位"
+                    title="定位到图层范围"
                     onClick={async () => {
                       const wh = getWarehouse()
                       const rows = (await wh.list({
@@ -414,9 +509,16 @@ export function DataTab() {
                         useAppStore.getState().patchLayer(layer.id, {
                           visible: true,
                         })
-                        await refreshDataOverlay()
+                        if (layer.type === "field") {
+                          useAppStore.getState().addFieldSource(layer.source)
+                          getMapRuntime()?.rebuildFieldView?.()
+                        } else {
+                          await refreshDataOverlay()
+                        }
                       }
-                      if (rows[0]) flyToCode(rows[0].gridId, 80_000)
+                      if (rows.length > 0) {
+                        flyToCodes(rows.map((r) => r.gridId))
+                      }
                     }}
                   >
                     <LocateFixed className="h-4 w-4" />

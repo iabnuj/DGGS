@@ -315,11 +315,13 @@ export function layersFromRecords(records: GridCellRecord[]) {
       id: source,
       name: first?.label ?? source,
       type:
-        first?.ref?.kind === "raster"
-          ? first.attrs?.modality === "dem"
-            ? "dem"
-            : "raster"
-          : "vector",
+        typeof first?.attrs?.field_value === "number"
+          ? "field"
+          : first?.ref?.kind === "raster"
+            ? first.attrs?.modality === "dem"
+              ? "dem"
+              : "raster"
+            : "vector",
       count: new Set(rows.map((r) => r.gridId)).size,
       levelMin: Math.min(...levels),
       levelMax: Math.max(...levels),

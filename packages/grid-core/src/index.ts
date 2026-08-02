@@ -5,4 +5,6 @@ import * as algebra from "./algebra"
 import * as cover from "./cover"
 import * as gaussKruger from "./gaussKruger"
 import * as fangli from "./fangli"
-export { geosot, geosot3d, utils, algebra, cover, gaussKruger, fangli }
+import * as envelope from "./envelope"
+import * as buffer from "./buffer"
+export { geosot, geosot3d, utils, algebra, cover, gaussKruger, fangli, envelope, buffer }

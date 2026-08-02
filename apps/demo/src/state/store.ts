@@ -46,6 +46,20 @@ export type LayerInfo = {
 
 export type BasemapId = "osm" | "sat" | "dark"
 
+export type AnalysisResult = {
+  codes: string[]
+  label: string
+  color: string
+}
+
+/** 标量场按类型（source）的渲染样式 */
+export type FieldStyleConfig = {
+  /** RAMP_PRESETS 中的 id */
+  rampId: string
+  /** 0–100 */
+  opacity: number
+}
+
 export function fragmentPreviewKey(r: GridCellRecord): string {
   return `${r.source}::${r.featureId ?? ""}::${r.gridId}`
 }
@@ -72,6 +86,24 @@ type AppState = {
   leftPanelOpen: boolean
   rightPanelOpen: boolean
   adminOverlay: boolean
+
+  // ---- 场数据源（自动渲染） ----
+  fieldSources: string[]
+  /** fieldData: 各场数据源的 colorMap，由渲染管线填充 */
+  fieldColorMaps: Record<string, Map<string, string>>
+  /** 按类型（source）的色带/透明度 */
+  fieldStyles: Record<string, FieldStyleConfig>
+  addFieldSource: (source: string) => void
+  removeFieldSource: (source: string) => void
+  clearFieldSources: () => void
+  setFieldColorMaps: (maps: Record<string, Map<string, string>>) => void
+  setFieldStyle: (source: string, patch: Partial<FieldStyleConfig>) => void
+
+  // ---- 分析结果叠加 ----
+  analysisResults: AnalysisResult[]
+  setAnalysisResults: (v: AnalysisResult[]) => void
+  clearAnalysisResults: () => void
+
   setGridVisible: (v: boolean) => void
   setLevel: (v: number) => void
   setAutoLevel: (v: boolean) => void
@@ -141,6 +173,50 @@ export const useAppStore = create<AppState>((set) => ({
   leftPanelOpen: true,
   rightPanelOpen: true,
   adminOverlay: true,
+
+  // ---- 场数据源 ----
+  fieldSources: [],
+  fieldColorMaps: {},
+  fieldStyles: {},
+  addFieldSource: (source) =>
+    set((s) => {
+      if (s.fieldSources.includes(source)) {
+        // 保持引用变化，便于订阅方在重导入后重建色斑
+        return { fieldSources: [...s.fieldSources] }
+      }
+      return { fieldSources: [...s.fieldSources, source] }
+    }),
+  removeFieldSource: (source) =>
+    set((s) => ({
+      fieldSources: s.fieldSources.filter((f) => f !== source),
+    })),
+  clearFieldSources: () => set({ fieldSources: [], fieldColorMaps: {} }),
+  setFieldColorMaps: (fieldColorMaps) => set({ fieldColorMaps }),
+  setFieldStyle: (source, patch) =>
+    set((s) => {
+      const prev = s.fieldStyles[source] ?? {
+        rampId: source,
+        opacity: 75,
+      }
+      return {
+        fieldStyles: {
+          ...s.fieldStyles,
+          [source]: {
+            rampId: patch.rampId ?? prev.rampId,
+            opacity: Math.max(
+              5,
+              Math.min(100, Math.round(patch.opacity ?? prev.opacity))
+            ),
+          },
+        },
+      }
+    }),
+
+  // ---- 分析结果叠加 ----
+  analysisResults: [],
+  setAnalysisResults: (analysisResults) => set({ analysisResults }),
+  clearAnalysisResults: () => set({ analysisResults: [] }),
+
   setGridVisible: (gridVisible) => set({ gridVisible }),
   setLevel: (level) => set({ level }),
   setAutoLevel: (autoLevel) => set({ autoLevel }),

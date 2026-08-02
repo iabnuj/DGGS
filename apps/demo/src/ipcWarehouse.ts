@@ -14,7 +14,7 @@ type DesktopApi = {
   openJson(): Promise<void>
   saveJson(): Promise<void>
   pickImportFile(): Promise<{
-    kind?: "geojson" | "raster"
+    kind?: "geojson" | "raster" | "csv"
     name: string
     text?: string
     filePath?: string

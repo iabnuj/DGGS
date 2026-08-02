@@ -300,11 +300,16 @@ export async function ingestRasterFile(opts) {
       )
       rgba = stretched.rgba
       if (st.min != null) {
+        const zMean = Math.round(st.mean * 100) / 100
         attrs = {
           ...attrs,
           zMin: Math.round(st.min * 100) / 100,
           zMax: Math.round(st.max * 100) / 100,
-          zMean: Math.round(st.mean * 100) / 100,
+          zMean,
+          // 单波段标量：供色斑场渲染
+          field_value: zMean,
+          field_type: opts.source,
+          field_unit: "m",
         }
       }
       if (nodata != null && Number.isFinite(Number(nodata))) {

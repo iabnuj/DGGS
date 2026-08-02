@@ -22,13 +22,23 @@ export function getWarehouse(): GridWarehouse {
 
 export async function syncLayersFromWarehouse() {
   const rows = (await getWarehouse().list()) as GridCellRecord[]
-  useAppStore.getState().setLayers(layersFromRecords(rows))
+  const layers = layersFromRecords(rows)
+  const store = useAppStore.getState()
+  store.setLayers(layers)
+  // 可见标量场层同步到渲染源（导入 / 启动后色斑能跟上）
+  for (const layer of layers) {
+    if (layer.type === "field" && layer.visible) {
+      store.addFieldSource(layer.source)
+    }
+  }
   return rows
 }
 
 /** Collect grid codes for currently visible data layers and paint them on the map. */
 export async function refreshDataOverlay() {
-  const layers = useAppStore.getState().layers.filter((l) => l.visible)
+  const layers = useAppStore.getState().layers.filter(
+    (l) => l.visible && l.type !== "field"
+  )
   const codes = new Set<string>()
   const wh = getWarehouse()
   for (const layer of layers) {
@@ -100,10 +110,12 @@ export async function deleteSourceLayer(source: string) {
   const rows = (await wh.list({ source })) as GridCellRecord[]
   if (wh.delete) await wh.delete(rows)
   removeSourceFeatures(source)
+  useAppStore.getState().removeFieldSource(source)
   await syncLayersFromWarehouse()
   await refreshDataOverlay()
   const { getMapRuntime } = await import("@/map/useCesiumMap")
   getMapRuntime()?.applyGisFeatures()
+  getMapRuntime()?.applyFieldView?.()
 }
 
 export function watchDesktopDataChanged(onChange: () => void) {

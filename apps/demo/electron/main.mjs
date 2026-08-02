@@ -220,16 +220,17 @@ function registerIpc() {
   })
   ipcMain.handle("desktop:pickImportFile", async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
-      title: "导入 GeoJSON / Shapefile / GeoTIFF",
+      title: "导入 GeoJSON / Shapefile / GeoTIFF / CSV",
       defaultPath: getImportDefaultPath(),
       filters: [
         {
           name: "支持的格式",
-          extensions: ["geojson", "json", "shp", "zip", "tif", "tiff"],
+          extensions: ["geojson", "json", "shp", "zip", "tif", "tiff", "csv"],
         },
         { name: "GeoJSON / JSON", extensions: ["geojson", "json"] },
         { name: "Shapefile", extensions: ["shp", "zip"] },
         { name: "GeoTIFF", extensions: ["tif", "tiff"] },
+        { name: "CSV 标量场", extensions: ["csv"] },
       ],
       properties: ["openFile"],
     })
@@ -239,6 +240,10 @@ function registerIpc() {
     const ext = path.extname(filePath).toLowerCase()
     if (ext === ".tif" || ext === ".tiff") {
       return { kind: "raster", name, filePath }
+    }
+    if (ext === ".csv") {
+      const text = await fs.readFile(filePath, "utf8")
+      return { kind: "csv", name, text, filePath }
     }
     if (ext === ".shp" || ext === ".zip") {
       try {

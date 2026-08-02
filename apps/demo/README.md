@@ -110,15 +110,17 @@ pnpm demo:dist            # 打本机安装包 → apps/demo/release/
 
 | 环境 | 支持格式 |
 |------|----------|
-| 浏览器 | GeoJSON / JSON |
-| 桌面 | GeoJSON、Shapefile（.shp / .zip）、GeoTIFF（.tif / .tiff） |
+| 浏览器 | GeoJSON / JSON、CSV 标量场 |
+| 桌面 | GeoJSON、Shapefile（.shp / .zip）、GeoTIFF（.tif / .tiff）、CSV 标量场 |
 
 流程：
 
 1. 选择文件后，应用会建议入格层级（并说明理由，如按几何尺度估算）。
 2. 用滑条确认层级（约 L8–L16，界面会显示该级大致边长）。
-3. 确认入格：矢量按点/线/面覆盖写入网格仓；栅格按格切分并生成 chip，可高亮上图。
-4. 图层列表中可显隐入格高亮、定位、删除图层。
+3. 确认入格：矢量按点/线/面覆盖写入网格仓；栅格按格切分并生成 chip；CSV / 单波段 GeoTIFF 写入 `field_value` 后按标量场色斑显示。
+4. 图层列表中可显隐入格高亮 / 色斑、定位、删除图层。
+
+标量场样本（常规格式）：仓库根目录 `testdata/fields/`（`temperature.csv` / `pressure.csv` / `wind_speed.csv`，以及 `elevation_dem_glo30.tif`）。CSV 列为 `lon,lat,value[,unit,time,name]`，来自 Open-Meteo；可用 `node scripts/fetch-field-samples.mjs` 重新拉取。
 
 桌面菜单还可 **文件 → 打开 / 保存 JSON**，导入导出网格记录；样例数据目录见 `resources/sample-data/`。
 

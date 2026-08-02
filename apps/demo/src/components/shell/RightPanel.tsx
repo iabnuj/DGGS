@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react"
-import { fangli, geosot } from "@dggs/grid-core"
-import { Copy, LocateFixed, Map, PanelRightClose } from "lucide-react"
+import { envelope, buffer, fangli, geosot } from "@dggs/grid-core"
+import { Copy, LocateFixed, Map, PanelRightClose, BoxSelect, Layers } from "lucide-react"
 import {
   coarsenSelection,
   refineSelection,
@@ -13,6 +13,8 @@ import { Button } from "@/components/ui/button"
 import { getWarehouse } from "@/data/warehouseBoot"
 import { flyToCode, getMapRuntime } from "@/map/useCesiumMap"
 import type { GridCellRecord } from "@dggs/grid-ingest"
+import { computeCellStats } from "@/data/computeCellStats"
+import { StatsGroup } from "@/components/shell/StatsCard"
 
 const MULTI_CELL_LIMIT = 120
 
@@ -198,6 +200,106 @@ function SelectionScaleToolbar() {
   )
 }
 
+/** 分析工具：包络、缓冲区 */
+function AnalysisToolbar() {
+  const gridSet = useAppStore((s) => s.gridSet)
+  const hasSel = !!gridSet && gridSet.codes.length > 0
+
+  const runEnvelope = () => {
+    const gs = useAppStore.getState().gridSet
+    if (!gs || gs.codes.length === 0) return
+    const result = envelope.envelope2D(gs.codes)
+    useAppStore.getState().setAnalysisResults([
+      ...useAppStore.getState().analysisResults,
+      { codes: result.codes, label: "包络", color: "#3b82f6" },
+    ])
+    getMapRuntime()?.applyAnalysisOverlays()
+    useAppStore.getState().setStatusText(
+      `包络 L${result.level} · ${result.codes.length} 格`
+    )
+  }
+
+  const runBuffer = (steps: number) => {
+    const gs = useAppStore.getState().gridSet
+    if (!gs || gs.codes.length === 0) return
+    const ring = buffer.bufferRing2D(gs.codes, steps)
+    useAppStore.getState().setAnalysisResults([
+      ...useAppStore.getState().analysisResults,
+      { codes: ring, label: `缓冲+${steps}`, color: "#f59e0b" },
+    ])
+    getMapRuntime()?.applyAnalysisOverlays()
+    useAppStore.getState().setStatusText(
+      `缓冲 +${steps} 级 · 环带 ${ring.length} 格`
+    )
+  }
+
+  const clearAnalysis = () => {
+    useAppStore.getState().clearAnalysisResults()
+    getMapRuntime()?.applyAnalysisOverlays()
+    useAppStore.getState().setStatusText("已清除分析结果")
+  }
+
+  const analysisCount = useAppStore((s) => s.analysisResults.length)
+
+  return (
+    <div className="space-y-1.5 rounded-md border border-border/60 bg-muted/30 px-2 py-2">
+      <p className="text-[10px] leading-relaxed text-muted-foreground">
+        空间分析（包络 / 缓冲区）
+      </p>
+      <div className="grid grid-cols-2 gap-1.5">
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          className="h-7 text-[11px]"
+          disabled={!hasSel}
+          title="计算选中网格集的最小包围网格"
+          onClick={runEnvelope}
+        >
+          <BoxSelect className="mr-1 h-3 w-3" />
+          包络
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          className="h-7 text-[11px]"
+          disabled={!hasSel}
+          title="选中网格 +1 级缓冲区环带"
+          onClick={() => runBuffer(1)}
+        >
+          <Layers className="mr-1 h-3 w-3" />
+          缓冲+1
+        </Button>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          className="h-7 flex-1 text-[11px]"
+          disabled={!hasSel}
+          title="选中网格 +3 级缓冲区环带"
+          onClick={() => runBuffer(3)}
+        >
+          缓冲+3
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="h-7 px-2 text-[10px] text-red-400"
+          disabled={analysisCount === 0}
+          title="清除所有分析叠加层"
+          onClick={clearAnalysis}
+        >
+          清除
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 function PreviewToolbar({
   records,
   previewKeys,
@@ -362,6 +464,9 @@ export function RightPanel() {
         <div className="mb-3">
           <SelectionScaleToolbar />
         </div>
+        <div className="mb-3">
+          <AnalysisToolbar />
+        </div>
         <dl className="mb-3 space-y-2 text-xs">
           <div className="flex justify-between gap-3">
             <dt className="text-muted-foreground">经纬度</dt>
@@ -403,6 +508,13 @@ export function RightPanel() {
             </>
           )}
         </div>
+        {/* 数据统计 */}
+        <div className="mt-3 border-t border-border/60 pt-3">
+          <p className="mb-2 text-[11px] font-medium text-muted-foreground">
+            数据统计
+          </p>
+          <StatsGroup stats={computeCellStats(records)} />
+        </div>
       </PanelShell>
     )
   }
@@ -418,6 +530,9 @@ export function RightPanel() {
     >
       <div className="mb-2">
         <SelectionScaleToolbar />
+      </div>
+      <div className="mb-2">
+        <AnalysisToolbar />
       </div>
       <div className="mb-2">
         <PreviewToolbar records={allRecords} previewKeys={previewKeys} />
@@ -464,6 +579,13 @@ export function RightPanel() {
             )}
           </section>
         ))}
+      </div>
+      {/* 数据统计 */}
+      <div className="mt-3 border-t border-border/60 pt-3">
+        <p className="mb-2 text-[11px] font-medium text-muted-foreground">
+          数据统计
+        </p>
+        <StatsGroup stats={computeCellStats(allRecords)} />
       </div>
     </PanelShell>
   )

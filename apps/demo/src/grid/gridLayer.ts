@@ -53,6 +53,8 @@ export type GridDrawOptions = {
   showCode: boolean
   /** Vertical stack count (≥1). Layer thickness ≈ cell lat span × 110574 m. */
   heightCount: number
+  /** When true (and not clamped), draw extruded volume cells; otherwise flat. */
+  extrude: boolean
   /** Drape outlines/fills on terrain (ignores extrusion while on). */
   clampToGround: boolean
   /** CSS hex, e.g. #ffffff */
@@ -82,6 +84,7 @@ const DEFAULT_OPTIONS: GridDrawOptions = {
   showFaces: false,
   showCode: false,
   heightCount: 1,
+  extrude: false,
   clampToGround: false,
   outlineColor: "#ffffff",
   fillColor: "#22c55e",
@@ -194,6 +197,15 @@ export class GridLayer {
   /** Visible warehouse data layers (roads/buildings/…) — independent of pick highlights. */
   private dataOutlinePrimitive: AnyPrimitive | undefined
   private dataFillPrimitive: AnyPrimitive | undefined
+
+  // ---- 场渲染 ----
+  private fieldFillPrimitive: AnyPrimitive | undefined
+  private fieldOutlinePrimitive: AnyPrimitive | undefined
+
+  // ---- 分析叠加（包络/缓冲区等） ----
+  private analysisOutlines: { result: AnyPrimitive; color: string; ids: string[] }[] = []
+  private analysisFills: AnyPrimitive[] = []
+
   private cells: CellMeta[] = []
   private highlightCodes = new Set<string>()
   private dataCodes = new Set<string>()
@@ -205,6 +217,11 @@ export class GridLayer {
 
   get size() {
     return this.cells.length
+  }
+
+  /** 返回当前视口所有网格编码（供场数据生成等用途） */
+  cellCodes(): string[] {
+    return this.cells.map((c) => c.code)
   }
 
   getOptions(): GridDrawOptions {
@@ -246,6 +263,7 @@ export class GridLayer {
       o.showFaces,
       o.showCode,
       o.heightCount,
+      o.extrude,
       o.clampToGround,
       o.outlineColor,
       o.fillColor,
@@ -330,6 +348,7 @@ export class GridLayer {
   clear() {
     this.clearHighlightOverlay()
     this.clearDataOverlay()
+    this.clearAnalysisOverlays()
     if (this.outlinePrimitive) {
       this.viewer.scene.primitives.remove(this.outlinePrimitive)
       this.outlinePrimitive = undefined
@@ -440,6 +459,7 @@ export class GridLayer {
       this.options.opacity
     )
     const clamp = this.options.clampToGround
+    const volume = this.useVolume()
     const heightCount = this.options.heightCount
     const outlineInstances: GeometryInstance[] = []
     const fillInstances: GeometryInstance[] = []
@@ -483,6 +503,32 @@ export class GridLayer {
             id: `${prefix}:${code}#fill`,
             geometry: new RectangleGeometry({
               rectangle,
+              vertexFormat: PerInstanceColorAppearance.VERTEX_FORMAT,
+            }),
+            attributes: {
+              color: ColorGeometryInstanceAttribute.fromColor(fillColor),
+            },
+          })
+        )
+      } else if (!volume) {
+        outlineInstances.push(
+          new GeometryInstance({
+            id: `${prefix}:${code}`,
+            geometry: new RectangleOutlineGeometry({
+              rectangle,
+              height: 0,
+            }),
+            attributes: {
+              color: ColorGeometryInstanceAttribute.fromColor(lineColor),
+            },
+          })
+        )
+        fillInstances.push(
+          new GeometryInstance({
+            id: `${prefix}:${code}#fill`,
+            geometry: new RectangleGeometry({
+              rectangle,
+              height: 0,
               vertexFormat: PerInstanceColorAppearance.VERTEX_FORMAT,
             }),
             attributes: {
@@ -665,7 +711,7 @@ export class GridLayer {
     this.clear()
     if (this.viewer.isDestroyed()) return
 
-    const { showOutline, showFaces, showCode, heightCount, clampToGround } =
+    const { showOutline, showFaces, showCode, heightCount, clampToGround, extrude } =
       this.options
 
     // Empty / style-off mesh still must restore pick + data overlays —
@@ -676,14 +722,126 @@ export class GridLayer {
       return
     }
 
-    // Ground draping is 2.5D; keep extrusion on ellipsoid path only.
+    // Flat by default; volume only when extrude is on and not terrain-clamped.
     if (clampToGround) {
       this.drawClamped(codes, showOutline, showFaces, showCode)
+    } else if (!extrude) {
+      this.drawFlatEllipsoid(codes, showOutline, showFaces, showCode)
     } else {
       this.drawEllipsoid(codes, showOutline, showFaces, showCode, heightCount)
     }
     this.redrawHighlightOverlay()
     this.redrawDataOverlay()
+  }
+
+  /** Volume cells only when extrude is on and terrain clamp is off. */
+  private useVolume(): boolean {
+    return this.options.extrude && !this.options.clampToGround
+  }
+
+  /** Flat rectangles on the ellipsoid (no extrusion). */
+  private drawFlatEllipsoid(
+    codes: string[],
+    showOutline: boolean,
+    showFaces: boolean,
+    showCode: boolean
+  ) {
+    const outlineInstances: GeometryInstance[] = []
+    const fillInstances: GeometryInstance[] = []
+    this.cells = []
+
+    const outlineColor = colorWithOpacity(this.options.outlineColor, 0.85, this.options.opacity)
+    const faceColor = colorWithOpacity(this.options.fillColor, 0.28, this.options.opacity)
+
+    let labels: LabelCollection | undefined
+    if (showCode) {
+      labels = this.viewer.scene.primitives.add(new LabelCollection())
+      this.labelCollection = labels
+    }
+
+    for (const code of codes) {
+      const b = geosot.bboxFromCode(code)
+      const west = clampLon(b.west)
+      const east = clampLon(b.east)
+      const south = clampLat(b.south)
+      const north = clampLat(b.north)
+      if (!(west < east && south < north)) continue
+
+      const rectangle = Rectangle.fromDegrees(west, south, east, north)
+      const cx = (west + east) / 2
+      const cy = (south + north) / 2
+
+      if (showOutline) {
+        outlineInstances.push(
+          new GeometryInstance({
+            id: code,
+            geometry: new RectangleOutlineGeometry({
+              rectangle,
+              height: 0,
+            }),
+            attributes: {
+              color: ColorGeometryInstanceAttribute.fromColor(outlineColor),
+            },
+          })
+        )
+      }
+
+      if (showFaces) {
+        fillInstances.push(
+          new GeometryInstance({
+            id: `${code}#fill0`,
+            geometry: new RectangleGeometry({
+              rectangle,
+              height: 0,
+              vertexFormat: PerInstanceColorAppearance.VERTEX_FORMAT,
+            }),
+            attributes: {
+              color: ColorGeometryInstanceAttribute.fromColor(faceColor),
+            },
+          })
+        )
+      }
+
+      if (showCode && labels) {
+        this.addCodeLabel(labels, {
+          lng: cx,
+          lat: cy,
+          height: 0,
+          text: code,
+          clampToGround: false,
+        })
+      }
+
+      this.cells.push({ code, west, south, east, north })
+    }
+
+    if (outlineInstances.length > 0) {
+      this.outlinePrimitive = this.viewer.scene.primitives.add(
+        new Primitive({
+          geometryInstances: outlineInstances,
+          appearance: new PerInstanceColorAppearance({
+            flat: true,
+            renderState: {
+              lineWidth: Math.min(1.5, this.viewer.scene.maximumAliasedLineWidth),
+            },
+          }),
+          asynchronous: true,
+        })
+      )
+    }
+
+    if (fillInstances.length > 0) {
+      this.fillPrimitive = this.viewer.scene.primitives.add(
+        new Primitive({
+          geometryInstances: fillInstances,
+          appearance: new PerInstanceColorAppearance({
+            translucent: true,
+            flat: true,
+          }),
+          asynchronous: true,
+        })
+      )
+    }
   }
 
   private drawClamped(
@@ -979,6 +1137,382 @@ export class GridLayer {
       south: hit.south,
       east: hit.east,
       north: hit.north,
+    }
+  }
+
+  // ================================================================
+  // 场数据可视化
+  // ================================================================
+
+  /** 清除场渲染层 */
+  clearFieldView() {
+    if (this.fieldFillPrimitive) {
+      this.viewer.scene.primitives.remove(this.fieldFillPrimitive)
+      this.fieldFillPrimitive = undefined
+    }
+    if (this.fieldOutlinePrimitive) {
+      this.viewer.scene.primitives.remove(this.fieldOutlinePrimitive)
+      this.fieldOutlinePrimitive = undefined
+    }
+  }
+
+  /**
+   * 从多数据源 colorMap 渲染场数据（支持每源独立透明度）
+   * @param colorMaps source → (code → cssColor)
+   * @param opacityBySource source → 0–100
+   */
+  drawFieldViewFromSources(
+    colorMaps: Record<string, Map<string, string>>,
+    opacityBySource?: Record<string, number>
+  ) {
+    this.clearFieldView()
+    if (this.viewer.isDestroyed()) return
+
+    const cells: { code: string; colorCss: string; opacity: number }[] = []
+    for (const source of Object.keys(colorMaps)) {
+      const map = colorMaps[source]
+      if (!map || map.size === 0) continue
+      const opacity = opacityBySource?.[source] ?? 75
+      for (const [code, colorCss] of map) {
+        cells.push({ code, colorCss, opacity })
+      }
+    }
+    if (cells.length === 0) return
+    this.drawFieldCells(cells)
+  }
+
+  /**
+   * 按标量场着色绘制网格面
+   * @param codes 网格编码集
+   * @param colorMap code → CSS 颜色
+   * @param opts.fieldOpacity 场透明度 (0-100)
+   */
+  drawFieldView(
+    codes: string[],
+    colorMap: Map<string, string>,
+    opts?: { fieldOpacity?: number }
+  ) {
+    const opacity = opts?.fieldOpacity ?? 80
+    const cells: { code: string; colorCss: string; opacity: number }[] = []
+    for (const code of codes) {
+      const colorCss = colorMap.get(code)
+      if (!colorCss) continue
+      cells.push({ code, colorCss, opacity })
+    }
+    this.drawFieldCells(cells)
+  }
+
+  private drawFieldCells(
+    cells: { code: string; colorCss: string; opacity: number }[]
+  ) {
+    this.clearFieldView()
+    if (this.viewer.isDestroyed() || cells.length === 0) return
+
+    const volume = this.useVolume()
+    const heightCount = this.options.heightCount
+    const fillInstances: GeometryInstance[] = []
+    const outlineInstances: GeometryInstance[] = []
+
+    for (const { code, colorCss, opacity } of cells) {
+      const alpha = Math.max(0.05, Math.min(1, opacity / 100))
+      const color = colorWithOpacity(colorCss, alpha, 100)
+      const b = geosot.bboxFromCode(code)
+      const west = clampLon(b.west)
+      const east = clampLon(b.east)
+      const south = clampLat(b.south)
+      const north = clampLat(b.north)
+      if (!(west < east && south < north)) continue
+
+      const rectangle = Rectangle.fromDegrees(west, south, east, north)
+      const layerH = Math.max(50, (north - south) * METERS_PER_DEG_LAT)
+
+      if (!volume) {
+        fillInstances.push(
+          new GeometryInstance({
+            id: `field:${code}`,
+            geometry: new RectangleGeometry({
+              rectangle,
+              vertexFormat: PerInstanceColorAppearance.VERTEX_FORMAT,
+            }),
+            attributes: {
+              color: ColorGeometryInstanceAttribute.fromColor(color),
+            },
+          })
+        )
+        outlineInstances.push(
+          new GeometryInstance({
+            id: `field-o:${code}`,
+            geometry: new GroundPolylineGeometry({
+              positions: Cartesian3.fromDegreesArray([
+                west,
+                south,
+                east,
+                south,
+                east,
+                north,
+                west,
+                north,
+                west,
+                south,
+              ]),
+              width: 1.25,
+            }),
+            attributes: {
+              color: ColorGeometryInstanceAttribute.fromColor(
+                color.withAlpha(Math.min(1, alpha * 1.4))
+              ),
+            },
+          })
+        )
+      } else {
+        for (let k = 0; k < heightCount; k++) {
+          const h0 = k * layerH
+          fillInstances.push(
+            new GeometryInstance({
+              id: `field:${code}#${k}`,
+              geometry: new RectangleGeometry({
+                rectangle,
+                height: h0,
+                extrudedHeight: h0 + layerH,
+                vertexFormat: PerInstanceColorAppearance.VERTEX_FORMAT,
+              }),
+              attributes: {
+                color: ColorGeometryInstanceAttribute.fromColor(color),
+              },
+            })
+          )
+          outlineInstances.push(
+            new GeometryInstance({
+              id: `field-o:${code}#${k}`,
+              geometry: new RectangleOutlineGeometry({
+                rectangle,
+                height: h0,
+              }),
+              attributes: {
+                color: ColorGeometryInstanceAttribute.fromColor(
+                  color.withAlpha(Math.min(1, alpha * 1.4))
+                ),
+              },
+            })
+          )
+        }
+      }
+    }
+
+    const async = cells.length > 64
+
+    if (fillInstances.length > 0) {
+      if (!volume) {
+        this.fieldFillPrimitive = this.viewer.scene.primitives.add(
+          new GroundPrimitive({
+            geometryInstances: fillInstances,
+            appearance: new PerInstanceColorAppearance({
+              translucent: true,
+              flat: true,
+            }),
+            classificationType: ClassificationType.BOTH,
+            asynchronous: async,
+          })
+        )
+      } else {
+        this.fieldFillPrimitive = this.viewer.scene.primitives.add(
+          new Primitive({
+            geometryInstances: fillInstances,
+            appearance: new PerInstanceColorAppearance({
+              translucent: true,
+              flat: true,
+            }),
+            asynchronous: async,
+            allowPicking: false,
+          })
+        )
+      }
+    }
+
+    if (outlineInstances.length > 0) {
+      if (!volume) {
+        this.fieldOutlinePrimitive = this.viewer.scene.primitives.add(
+          new GroundPolylinePrimitive({
+            geometryInstances: outlineInstances,
+            appearance: new PolylineColorAppearance(),
+            asynchronous: async,
+          })
+        )
+      } else {
+        this.fieldOutlinePrimitive = this.viewer.scene.primitives.add(
+          new Primitive({
+            geometryInstances: outlineInstances,
+            appearance: new PerInstanceColorAppearance({
+              flat: true,
+              renderState: {
+                lineWidth: Math.min(1, this.viewer.scene.maximumAliasedLineWidth),
+              },
+            }),
+            asynchronous: async,
+            allowPicking: false,
+          })
+        )
+      }
+    }
+  }
+
+  // ================================================================
+  // 分析结果叠加（包络 / 缓冲区等）
+  // ================================================================
+
+  /** 清除所有分析叠加层 */
+  clearAnalysisOverlays() {
+    for (const { result } of this.analysisOutlines) {
+      this.viewer.scene.primitives.remove(result)
+    }
+    this.analysisOutlines = []
+    for (const f of this.analysisFills) {
+      this.viewer.scene.primitives.remove(f)
+    }
+    this.analysisFills = []
+  }
+
+  /**
+   * 添加一个分析叠加层（包络/缓冲区）。
+   * 每次调用追加一层，不同分析结果用不同颜色区分。
+   */
+  addAnalysisOverlay(codes: string[], color: string, label: string) {
+    if (this.viewer.isDestroyed() || codes.length === 0) return
+
+    const lineColor = colorWithOpacity(color, 0.92, this.options.opacity)
+    const fillColor = colorWithOpacity(color, 0.18, this.options.opacity)
+
+    const outlineInstances: GeometryInstance[] = []
+    const fillInstances: GeometryInstance[] = []
+    const ids: string[] = []
+
+    for (const code of codes) {
+      const b = geosot.bboxFromCode(code)
+      const west = clampLon(b.west)
+      const east = clampLon(b.east)
+      const south = clampLat(b.south)
+      const north = clampLat(b.north)
+      if (!(west < east && south < north)) continue
+
+      const rectangle = Rectangle.fromDegrees(west, south, east, north)
+      const idBase = `analysis:${label}:${code}`
+      ids.push(idBase)
+
+      if (this.options.clampToGround) {
+        outlineInstances.push(
+          new GeometryInstance({
+            id: idBase,
+            geometry: new GroundPolylineGeometry({
+              positions: Cartesian3.fromDegreesArray([west, south, east, south, east, north, west, north, west, south]),
+              width: 3,
+            }),
+            attributes: { color: ColorGeometryInstanceAttribute.fromColor(lineColor) },
+          })
+        )
+        fillInstances.push(
+          new GeometryInstance({
+            id: `${idBase}#fill`,
+            geometry: new RectangleGeometry({
+              rectangle,
+              vertexFormat: PerInstanceColorAppearance.VERTEX_FORMAT,
+            }),
+            attributes: { color: ColorGeometryInstanceAttribute.fromColor(fillColor) },
+          })
+        )
+      } else if (!this.useVolume()) {
+        outlineInstances.push(
+          new GeometryInstance({
+            id: idBase,
+            geometry: new RectangleOutlineGeometry({ rectangle, height: 0 }),
+            attributes: { color: ColorGeometryInstanceAttribute.fromColor(lineColor) },
+          })
+        )
+        fillInstances.push(
+          new GeometryInstance({
+            id: `${idBase}#fill`,
+            geometry: new RectangleGeometry({
+              rectangle,
+              height: 0,
+              vertexFormat: PerInstanceColorAppearance.VERTEX_FORMAT,
+            }),
+            attributes: { color: ColorGeometryInstanceAttribute.fromColor(fillColor) },
+          })
+        )
+      } else {
+        const bbox = geosot.bboxFromCode(code)
+        const layerH = Math.max(80, (bbox.north - bbox.south) * METERS_PER_DEG_LAT)
+        outlineInstances.push(
+          new GeometryInstance({
+            id: idBase,
+            geometry: new RectangleOutlineGeometry({ rectangle, height: layerH * 0.15 }),
+            attributes: { color: ColorGeometryInstanceAttribute.fromColor(lineColor) },
+          })
+        )
+        fillInstances.push(
+          new GeometryInstance({
+            id: `${idBase}#fill`,
+            geometry: new RectangleGeometry({
+              rectangle,
+              height: layerH * 0.1,
+              extrudedHeight: layerH * 0.25,
+              vertexFormat: PerInstanceColorAppearance.VERTEX_FORMAT,
+            }),
+            attributes: { color: ColorGeometryInstanceAttribute.fromColor(fillColor) },
+          })
+        )
+      }
+    }
+
+    const async = codes.length > 64
+
+    if (outlineInstances.length > 0) {
+      if (this.options.clampToGround) {
+        const p = this.viewer.scene.primitives.add(
+          new GroundPolylinePrimitive({
+            geometryInstances: outlineInstances,
+            appearance: new PolylineColorAppearance(),
+            asynchronous: async,
+          })
+        )
+        this.analysisOutlines.push({ result: p, color, ids })
+      } else {
+        const p = this.viewer.scene.primitives.add(
+          new Primitive({
+            geometryInstances: outlineInstances,
+            appearance: new PerInstanceColorAppearance({
+              flat: true,
+              renderState: { lineWidth: Math.min(3, this.viewer.scene.maximumAliasedLineWidth) },
+            }),
+            asynchronous: async,
+            allowPicking: false,
+          })
+        )
+        this.analysisOutlines.push({ result: p, color, ids })
+      }
+    }
+
+    if (fillInstances.length > 0) {
+      if (this.options.clampToGround) {
+        const f = this.viewer.scene.primitives.add(
+          new GroundPrimitive({
+            geometryInstances: fillInstances,
+            appearance: new PerInstanceColorAppearance({ translucent: true, flat: true }),
+            classificationType: ClassificationType.TERRAIN,
+            asynchronous: async,
+          })
+        )
+        this.analysisFills.push(f)
+      } else {
+        const f = this.viewer.scene.primitives.add(
+          new Primitive({
+            geometryInstances: fillInstances,
+            appearance: new PerInstanceColorAppearance({ translucent: true, flat: true }),
+            asynchronous: async,
+            allowPicking: false,
+          })
+        )
+        this.analysisFills.push(f)
+      }
     }
   }
 }

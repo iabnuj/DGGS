@@ -26,8 +26,8 @@ import {
   bootWarehouse,
   watchDesktopDataChanged,
 } from "@/data/warehouseBoot"
+import { computeFieldColorMap, resolveFieldStyle } from "@/data/fieldRenderer"
 import { loadFeatureStoreFromLocalStorage } from "@/data/featureGeometryStore"
-
 export type MapRuntime = {
   viewer: Viewer
   gridLayer: GridLayer
@@ -40,6 +40,12 @@ export type MapRuntime = {
   applyGisFeatures: () => void
   /** Draw cell-local fragments from detail-panel 上图. */
   applyCellFragments: () => void
+  /** Draw/refresh field data overlay from current color maps. */
+  applyFieldView: () => void
+  /** Re-query warehouse and rebuild field color patches. */
+  rebuildFieldView: () => void
+  /** Draw analysis overlays (envelope/buffer). */
+  applyAnalysisOverlays: () => void
 }
 
 let runtime: MapRuntime | null = null
@@ -49,14 +55,43 @@ export function getMapRuntime(): MapRuntime | null {
 }
 
 export function flyToCode(code: string, height = 40_000) {
+  flyToCodes([code], height)
+}
+
+/** 飞到一组编码的包围盒中心；未指定高度时按跨度估算。 */
+export function flyToCodes(codes: Iterable<string>, height?: number) {
   const rt = runtime
   if (!rt || rt.viewer.isDestroyed()) return
-  const b = geosot.bboxFromCode(code)
+
+  let west = 180
+  let south = 90
+  let east = -180
+  let north = -90
+  let n = 0
+  for (const code of codes) {
+    try {
+      const b = geosot.bboxFromCode(code)
+      if (b.west < west) west = b.west
+      if (b.south < south) south = b.south
+      if (b.east > east) east = b.east
+      if (b.north > north) north = b.north
+      n++
+    } catch {
+      // 非法编码跳过
+    }
+  }
+  if (n === 0 || !(west < east && south < north)) return
+
+  const spanDeg = Math.max(east - west, north - south)
+  const autoH = Math.min(
+    2_500_000,
+    Math.max(8_000, spanDeg * 110_574 * 2.2)
+  )
   rt.viewer.camera.flyTo({
     destination: Cartesian3.fromDegrees(
-      (b.west + b.east) / 2,
-      (b.south + b.north) / 2,
-      height
+      (west + east) / 2,
+      (south + north) / 2,
+      height ?? autoH
     ),
     duration: 0.8,
   })
@@ -119,6 +154,45 @@ export function useCesiumMap(containerId = "cesiumContainer") {
       })
     }
 
+    const applyFieldView = () => {
+      if (cancelled || viewer.isDestroyed()) return
+      const s = useAppStore.getState()
+      const opacityBySource: Record<string, number> = {}
+      for (const source of Object.keys(s.fieldColorMaps)) {
+        opacityBySource[source] = resolveFieldStyle(source).opacity
+      }
+      gridLayer.drawFieldViewFromSources(s.fieldColorMaps, opacityBySource)
+      viewer.scene.requestRender()
+    }
+
+    const rebuildFieldView = () => {
+      if (cancelled || viewer.isDestroyed()) return
+      const sources = useAppStore.getState().fieldSources
+      if (sources.length === 0) {
+        gridLayer.clearFieldView()
+        useAppStore.getState().setFieldColorMaps({})
+        viewer.scene.requestRender()
+        return
+      }
+      void computeFieldColorMap(sources).then((maps) => {
+        if (cancelled || viewer.isDestroyed()) return
+        useAppStore.getState().setFieldColorMaps(maps)
+        applyFieldView()
+      })
+    }
+
+    const applyAnalysisOverlays = () => {
+      if (cancelled || viewer.isDestroyed()) return
+      const s = useAppStore.getState()
+      gridLayer.clearAnalysisOverlays()
+      for (const result of s.analysisResults) {
+        if (result.codes.length > 0) {
+          gridLayer.addAnalysisOverlay(result.codes, result.color, result.label)
+        }
+      }
+      viewer.scene.requestRender()
+    }
+
     const refresh = (force = false) => {
       if (cancelled || viewer.isDestroyed()) return
       const s = useAppStore.getState()
@@ -146,6 +220,8 @@ export function useCesiumMap(containerId = "cesiumContainer") {
 
       gridLayer.setOptions({
         ...s.drawOptions,
+        // 仅「按属性拉伸高度」开启时立体；否则平面
+        extrude: s.extrudeByAttr,
         heightCount: s.extrudeByAttr ? Math.max(s.drawOptions.heightCount, 3) : 1,
         clampToGround: s.terrain,
       })
@@ -170,6 +246,16 @@ export function useCesiumMap(containerId = "cesiumContainer") {
         if (useAppStore.getState().statusText !== text) {
           useAppStore.getState().setStatusText(text)
         }
+
+        // ---- 分析叠加 ----
+        if (s.analysisResults.length > 0) {
+          applyAnalysisOverlays()
+        }
+        // 网格样式（平面/立体）变化后重绘场色斑
+        if (s.fieldSources.length > 0) {
+          if (Object.keys(s.fieldColorMaps).length > 0) applyFieldView()
+          else rebuildFieldView()
+        }
       } catch (err) {
         useAppStore.getState().setStatusText(
           `刷新失败: ${err instanceof Error ? err.message : String(err)}`
@@ -185,6 +271,9 @@ export function useCesiumMap(containerId = "cesiumContainer") {
       applyDataOverlay,
       applyGisFeatures,
       applyCellFragments,
+      applyFieldView,
+      rebuildFieldView,
+      applyAnalysisOverlays,
     }
 
     let refreshTimer: number | undefined
@@ -269,6 +358,22 @@ export function useCesiumMap(containerId = "cesiumContainer") {
     const unsubFragments = useAppStore.subscribe((state, prev) => {
       if (state.cellFragmentPreviews === prev.cellFragmentPreviews) return
       applyCellFragments()
+    })
+
+    const unsubField = useAppStore.subscribe((state, prev) => {
+      if (state.fieldSources === prev.fieldSources) return
+      rebuildFieldView()
+    })
+
+    const unsubFieldStyle = useAppStore.subscribe((state, prev) => {
+      if (state.fieldStyles === prev.fieldStyles) return
+      // 色带变更需重算颜色；仅透明度可变 apply
+      rebuildFieldView()
+    })
+
+    const unsubAnalysis = useAppStore.subscribe((state, prev) => {
+      if (state.analysisResults === prev.analysisResults) return
+      applyAnalysisOverlays()
     })
 
     const handler = new ScreenSpaceEventHandler(viewer.scene.canvas)
@@ -364,6 +469,9 @@ export function useCesiumMap(containerId = "cesiumContainer") {
       unsubTool()
       unsubBasemap()
       unsubFragments()
+      unsubField()
+      unsubFieldStyle()
+      unsubAnalysis()
       unwatch()
       clearDraw()
       handler.destroy()
