@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { Eye, EyeOff, LocateFixed, Map, Trash2 } from "lucide-react"
+import { Eye, EyeOff, LocateFixed, Map, RefreshCw, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
@@ -495,6 +495,70 @@ export function DataTab() {
                       <Map className="h-4 w-4 opacity-35" />
                     )}
                   </Button>
+                  {layer.type === "field" && (
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      title="增量更新演示：只改少量格并对比全量耗时"
+                      onClick={() => {
+                        void (async () => {
+                          const wh = getWarehouse()
+                          const rows = (await wh.list({
+                            source: layer.source,
+                          })) as GridCellRecord[]
+                          if (rows.length === 0) {
+                            useAppStore
+                              .getState()
+                              .setStatusText("该图层无记录，无法增量更新")
+                            return
+                          }
+                          useAppStore
+                            .getState()
+                            .setStatusText("增量更新计时中…")
+                          const tFull0 = performance.now()
+                          await wh.put(rows.map((r) => ({ ...r, attrs: { ...r.attrs } })))
+                          const fullMs = performance.now() - tFull0
+
+                          const k = Math.min(
+                            20,
+                            Math.max(5, Math.round(rows.length * 0.08))
+                          )
+                          const picked = [...rows]
+                            .sort(() => Math.random() - 0.5)
+                            .slice(0, k)
+                            .map((r) => {
+                              const v = r.attrs?.field_value
+                              const base =
+                                typeof v === "number" && !Number.isNaN(v) ? v : 0
+                              return {
+                                ...r,
+                                time: new Date().toISOString(),
+                                attrs: {
+                                  ...r.attrs,
+                                  field_value:
+                                    Math.round((base + (Math.random() - 0.5) * 4) * 100) /
+                                    100,
+                                },
+                              }
+                            })
+                          const tInc0 = performance.now()
+                          await wh.put(picked)
+                          const incMs = performance.now() - tInc0
+
+                          useAppStore.getState().addFieldSource(layer.source)
+                          getMapRuntime()?.rebuildFieldView?.()
+                          const ratio =
+                            incMs > 0.01 ? (fullMs / incMs).toFixed(1) : "∞"
+                          useAppStore.getState().setStatusText(
+                            `增量 ${k} 格 ${incMs.toFixed(1)}ms · 全量 ${rows.length} 格 ${fullMs.toFixed(1)}ms · 约 ${ratio}×`
+                          )
+                        })()
+                      }}
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                    </Button>
+                  )}
                   <Button
                     type="button"
                     size="icon"

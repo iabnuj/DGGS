@@ -3,6 +3,9 @@ import type { GridCellRecord } from "@dggs/grid-ingest"
 
 export type ToolMode = "pan" | "pick" | "drawLine" | "drawPolygon"
 
+/** 航线通路规划：地图点选写入起/终点 */
+export type RoutePickMode = "start" | "goal" | null
+
 export type GridSet = {
   codes: string[]
   level: number
@@ -103,6 +106,20 @@ type AppState = {
   analysisResults: AnalysisResult[]
   setAnalysisResults: (v: AnalysisResult[]) => void
   clearAnalysisResults: () => void
+
+  /** 布尔运算集合 A / B（编码列表） */
+  analysisSetA: string[] | null
+  analysisSetB: string[] | null
+  setAnalysisSetA: (codes: string[] | null) => void
+  setAnalysisSetB: (codes: string[] | null) => void
+
+  /** 航线通路规划起终点与拾取模式 */
+  routeStart: string | null
+  routeGoal: string | null
+  routePickMode: RoutePickMode
+  setRouteStart: (code: string | null) => void
+  setRouteGoal: (code: string | null) => void
+  setRoutePickMode: (m: RoutePickMode) => void
 
   setGridVisible: (v: boolean) => void
   setLevel: (v: number) => void
@@ -216,6 +233,18 @@ export const useAppStore = create<AppState>((set) => ({
   analysisResults: [],
   setAnalysisResults: (analysisResults) => set({ analysisResults }),
   clearAnalysisResults: () => set({ analysisResults: [] }),
+
+  analysisSetA: null,
+  analysisSetB: null,
+  setAnalysisSetA: (analysisSetA) => set({ analysisSetA }),
+  setAnalysisSetB: (analysisSetB) => set({ analysisSetB }),
+
+  routeStart: null,
+  routeGoal: null,
+  routePickMode: null,
+  setRouteStart: (routeStart) => set({ routeStart }),
+  setRouteGoal: (routeGoal) => set({ routeGoal }),
+  setRoutePickMode: (routePickMode) => set({ routePickMode }),
 
   setGridVisible: (gridVisible) => set({ gridVisible }),
   setLevel: (level) => set({ level }),

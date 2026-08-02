@@ -426,6 +426,24 @@ export function useCesiumMap(containerId = "cesiumContainer") {
         finalCode = geosot.locToQuaternary(lng, lat, useAppStore.getState().level)
       }
       const level = geosot.getLevel(finalCode)
+      const routePick = useAppStore.getState().routePickMode
+      if (routePick === "start" || routePick === "goal") {
+        if (routePick === "start") {
+          useAppStore.getState().setRouteStart(finalCode)
+          useAppStore.getState().setStatusText(`已设置起点 ${finalCode}`)
+        } else {
+          useAppStore.getState().setRouteGoal(finalCode)
+          useAppStore.getState().setStatusText(`已设置终点 ${finalCode}`)
+        }
+        useAppStore.getState().setRoutePickMode(null)
+        useAppStore.getState().setGridSet({
+          codes: [finalCode],
+          level,
+          from: "pick",
+        })
+        applyHighlights()
+        return
+      }
       useAppStore.getState().setGridSet({
         codes: [finalCode],
         level,

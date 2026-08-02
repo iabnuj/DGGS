@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react"
-import { envelope, buffer, fangli, geosot } from "@dggs/grid-core"
-import { Copy, LocateFixed, Map, PanelRightClose, BoxSelect, Layers } from "lucide-react"
+import { envelope, buffer, boolean, fangli, geosot } from "@dggs/grid-core"
+import {
+  Copy,
+  LocateFixed,
+  Map,
+  PanelRightClose,
+  BoxSelect,
+  Layers,
+  CircleDot,
+} from "lucide-react"
 import {
   coarsenSelection,
   refineSelection,
@@ -200,21 +208,40 @@ function SelectionScaleToolbar() {
   )
 }
 
-/** 分析工具：包络、缓冲区 */
+function pushAnalysis(
+  codes: string[],
+  label: string,
+  color: string,
+  status: string
+) {
+  if (codes.length === 0) {
+    useAppStore.getState().setStatusText(`${label}：结果为空`)
+    return
+  }
+  useAppStore.getState().setAnalysisResults([
+    ...useAppStore.getState().analysisResults,
+    { codes, label, color },
+  ])
+  getMapRuntime()?.applyAnalysisOverlays()
+  useAppStore.getState().setStatusText(status)
+}
+
+/** 分析工具：包络、缓冲、布尔 */
 function AnalysisToolbar() {
   const gridSet = useAppStore((s) => s.gridSet)
+  const setA = useAppStore((s) => s.analysisSetA)
+  const setB = useAppStore((s) => s.analysisSetB)
   const hasSel = !!gridSet && gridSet.codes.length > 0
+  const hasAB = !!setA?.length && !!setB?.length
 
   const runEnvelope = () => {
     const gs = useAppStore.getState().gridSet
     if (!gs || gs.codes.length === 0) return
     const result = envelope.envelope2D(gs.codes)
-    useAppStore.getState().setAnalysisResults([
-      ...useAppStore.getState().analysisResults,
-      { codes: result.codes, label: "包络", color: "#3b82f6" },
-    ])
-    getMapRuntime()?.applyAnalysisOverlays()
-    useAppStore.getState().setStatusText(
+    pushAnalysis(
+      result.codes,
+      "包络",
+      "#3b82f6",
       `包络 L${result.level} · ${result.codes.length} 格`
     )
   }
@@ -223,13 +250,41 @@ function AnalysisToolbar() {
     const gs = useAppStore.getState().gridSet
     if (!gs || gs.codes.length === 0) return
     const ring = buffer.bufferRing2D(gs.codes, steps)
-    useAppStore.getState().setAnalysisResults([
-      ...useAppStore.getState().analysisResults,
-      { codes: ring, label: `缓冲+${steps}`, color: "#f59e0b" },
-    ])
-    getMapRuntime()?.applyAnalysisOverlays()
-    useAppStore.getState().setStatusText(
+    pushAnalysis(
+      ring,
+      `缓冲+${steps}`,
+      "#f59e0b",
       `缓冲 +${steps} 级 · 环带 ${ring.length} 格`
+    )
+  }
+
+  const saveSet = (which: "A" | "B") => {
+    const gs = useAppStore.getState().gridSet
+    if (!gs || gs.codes.length === 0) return
+    const codes = [...gs.codes]
+    if (which === "A") useAppStore.getState().setAnalysisSetA(codes)
+    else useAppStore.getState().setAnalysisSetB(codes)
+    useAppStore
+      .getState()
+      .setStatusText(`已存为集合${which} · ${codes.length} 格`)
+  }
+
+  const runBoolean = (op: "intersect" | "union" | "difference") => {
+    const a = useAppStore.getState().analysisSetA
+    const b = useAppStore.getState().analysisSetB
+    if (!a?.length || !b?.length) return
+    const { codes, level } = boolean.booleanOp(op, a, b)
+    const meta =
+      op === "intersect"
+        ? { label: "交 A∩B", color: "#a855f7" }
+        : op === "union"
+          ? { label: "并 A∪B", color: "#22c55e" }
+          : { label: "差 A−B", color: "#ef4444" }
+    pushAnalysis(
+      codes,
+      meta.label,
+      meta.color,
+      `${meta.label} L${level} · ${codes.length} 格`
     )
   }
 
@@ -242,9 +297,9 @@ function AnalysisToolbar() {
   const analysisCount = useAppStore((s) => s.analysisResults.length)
 
   return (
-    <div className="space-y-1.5 rounded-md border border-border/60 bg-muted/30 px-2 py-2">
+    <div className="space-y-2 rounded-md border border-border/60 bg-muted/30 px-2 py-2">
       <p className="text-[10px] leading-relaxed text-muted-foreground">
-        空间分析（包络 / 缓冲区）
+        空间分析（包络 / 缓冲 / 布尔）
       </p>
       <div className="grid grid-cols-2 gap-1.5">
         <Button
@@ -296,6 +351,80 @@ function AnalysisToolbar() {
           清除
         </Button>
       </div>
+
+      <div className="border-t border-border/50 pt-2">
+        <p className="mb-1.5 text-[10px] text-muted-foreground">
+          布尔集合{" "}
+          <span className="font-mono">
+            A={setA?.length ?? 0} B={setB?.length ?? 0}
+          </span>
+        </p>
+        <div className="mb-1.5 grid grid-cols-2 gap-1.5">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-7 text-[11px]"
+            disabled={!hasSel}
+            title="将当前选中存为探测范围 A"
+            onClick={() => saveSet("A")}
+          >
+            <CircleDot className="mr-1 h-3 w-3" />
+            存为 A
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-7 text-[11px]"
+            disabled={!hasSel}
+            title="将当前选中存为探测范围 B"
+            onClick={() => saveSet("B")}
+          >
+            <CircleDot className="mr-1 h-3 w-3" />
+            存为 B
+          </Button>
+        </div>
+        <div className="grid grid-cols-3 gap-1">
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            className="h-7 text-[10px]"
+            disabled={!hasAB}
+            title="A ∩ B 交集"
+            onClick={() => runBoolean("intersect")}
+          >
+            交
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            className="h-7 text-[10px]"
+            disabled={!hasAB}
+            title="A ∪ B 并集"
+            onClick={() => runBoolean("union")}
+          >
+            并
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            className="h-7 text-[10px]"
+            disabled={!hasAB}
+            title="A − B 差集"
+            onClick={() => runBoolean("difference")}
+          >
+            差
+          </Button>
+        </div>
+      </div>
+
+      <p className="text-[9px] leading-relaxed text-muted-foreground">
+        航线通路规划请使用左侧「航线通路规划」面板（A* + 场约束）。
+      </p>
     </div>
   )
 }

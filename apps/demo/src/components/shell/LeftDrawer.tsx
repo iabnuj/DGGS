@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { DisplayTab } from "@/components/tabs/DisplayTab"
 import { DataTab } from "@/components/tabs/DataTab"
 import { MapTab } from "@/components/tabs/MapTab"
+import { RoutePlanTab } from "@/components/tabs/RoutePlanTab"
 import { useAppStore } from "@/state/store"
 
 export function LeftDrawer() {
@@ -43,6 +44,11 @@ export function LeftDrawer() {
           className="gap-0"
           items={[
             { id: "data", title: "格网数据", content: <DataTab /> },
+            {
+              id: "route",
+              title: "航线通路规划",
+              content: <RoutePlanTab />,
+            },
             { id: "display", title: "格网显示", content: <DisplayTab /> },
             { id: "map", title: "地图显示", content: <MapTab /> },
           ]}
