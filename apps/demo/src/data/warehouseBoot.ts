@@ -37,7 +37,7 @@ export async function syncLayersFromWarehouse() {
 /** Collect grid codes for currently visible data layers and paint them on the map. */
 export async function refreshDataOverlay() {
   const layers = useAppStore.getState().layers.filter(
-    (l) => l.visible && l.type !== "field"
+    (l) => l.visible && l.type !== "field" && !l.source.startsWith("semantic:")
   )
   const codes = new Set<string>()
   const wh = getWarehouse()
@@ -107,10 +107,16 @@ export async function importRecords(
 
 export async function deleteSourceLayer(source: string) {
   const wh = getWarehouse()
-  const rows = (await wh.list({ source })) as GridCellRecord[]
-  if (wh.delete) await wh.delete(rows)
-  removeSourceFeatures(source)
-  useAppStore.getState().removeFieldSource(source)
+  const targets = new Set([source])
+  if (!source.startsWith("semantic:")) {
+    targets.add(`semantic:${source}`)
+  }
+  for (const src of targets) {
+    const rows = (await wh.list({ source: src })) as GridCellRecord[]
+    if (rows.length && wh.delete) await wh.delete(rows)
+    removeSourceFeatures(src)
+    useAppStore.getState().removeFieldSource(src)
+  }
   await syncLayersFromWarehouse()
   await refreshDataOverlay()
   const { getMapRuntime } = await import("@/map/useCesiumMap")

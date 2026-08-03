@@ -14,6 +14,12 @@ import {
   shapefileToGeoJson,
 } from "./shapefileToGeoJson.mjs"
 
+// 浮动叠加滚动条（不占布局宽度）；须在 ready 之前
+app.commandLine.appendSwitch(
+  "enable-features",
+  "OverlayScrollbar,OverlayScrollbarFlashAfterAnyScrollUpdate,OverlayScrollbarFlashWhenMouseEnter"
+)
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const require = createRequire(import.meta.url)
 const isDev = !app.isPackaged

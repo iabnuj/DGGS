@@ -8,6 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { OverlayScrollArea } from "@/components/ui/overlay-scroll-area"
 import { getMapRuntime, resetChinaView } from "@/map/useCesiumMap"
 import { useAppStore, type BasemapId } from "@/state/store"
 
@@ -18,7 +19,7 @@ export function MapTab() {
   const lighting = useAppStore((s) => s.lighting)
 
   return (
-    <div className="h-full min-h-0 space-y-4 overflow-y-auto">
+    <OverlayScrollArea className="h-full" contentClassName="space-y-4">
       <div className="space-y-2">
         <Label>底图</Label>
         <Select
@@ -78,6 +79,6 @@ export function MapTab() {
       >
         重置视角（中国）
       </Button>
-    </div>
+    </OverlayScrollArea>
   )
 }

@@ -1,7 +1,13 @@
 import { create } from "zustand"
 import type { GridCellRecord } from "@dggs/grid-ingest"
 
-export type ToolMode = "pan" | "pick" | "drawLine" | "drawPolygon"
+export type ToolMode =
+  | "pan"
+  | "pick"
+  | "drawLine"
+  | "drawPolygon"
+  | "drawFreeLine"
+  | "drawFreePolygon"
 
 /** 航线通路规划：地图点选写入起/终点 */
 export type RoutePickMode = "start" | "goal" | null

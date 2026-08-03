@@ -18,6 +18,7 @@ import {
 } from "@/analysis/assaultCorridor"
 import { flyToCode, getMapRuntime } from "@/map/useCesiumMap"
 import { useAppStore } from "@/state/store"
+import { OverlayScrollArea } from "@/components/ui/overlay-scroll-area"
 
 function shortCode(code: string | null): string {
   if (!code) return "未设置"
@@ -213,7 +214,7 @@ export function RoutePlanTab() {
   )
 
   return (
-    <div className="h-full min-h-0 space-y-3 overflow-y-auto pb-2">
+    <OverlayScrollArea className="h-full" contentClassName="space-y-3 pb-2">
       <p className="text-[10px] leading-relaxed text-muted-foreground">
         基于网格场数据的航线通路规划（A*）。设置起终点与约束后计算可行通路。
       </p>
@@ -366,6 +367,6 @@ export function RoutePlanTab() {
           <Trash2 className="h-3.5 w-3.5" />
         </Button>
       </div>
-    </div>
+    </OverlayScrollArea>
   )
 }

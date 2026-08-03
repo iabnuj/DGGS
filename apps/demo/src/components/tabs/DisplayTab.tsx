@@ -2,6 +2,7 @@ import { useRef } from "react"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Slider } from "@/components/ui/slider"
+import { OverlayScrollArea } from "@/components/ui/overlay-scroll-area"
 import { getMapRuntime } from "@/map/useCesiumMap"
 import { useAppStore } from "@/state/store"
 
@@ -56,7 +57,7 @@ export function DisplayTab() {
   }
 
   return (
-    <div className="h-full min-h-0 space-y-4 overflow-y-auto">
+    <OverlayScrollArea className="h-full" contentClassName="space-y-4">
       <div className="flex items-center justify-between gap-3">
         <Label htmlFor="show-grid">显示网格底座</Label>
         <Switch
@@ -258,6 +259,6 @@ export function DisplayTab() {
           ? "开启后网格立体拉伸；地形贴地时仍按平面绘制。"
           : "关闭时网格平面绘制。"}
       </p>
-    </div>
+    </OverlayScrollArea>
   )
 }

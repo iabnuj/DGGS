@@ -18,6 +18,7 @@ import {
   useAppStore,
 } from "@/state/store"
 import { Button } from "@/components/ui/button"
+import { OverlayScrollArea } from "@/components/ui/overlay-scroll-area"
 import { getWarehouse } from "@/data/warehouseBoot"
 import { flyToCode, getMapRuntime } from "@/map/useCesiumMap"
 import type { GridCellRecord } from "@dggs/grid-ingest"
@@ -63,6 +64,11 @@ function RecordRow({
               #{r.featureId}
             </span>
           ) : null}
+          {typeof r.attrs.class === "string" ? (
+            <span className="ml-1 rounded bg-violet-500/20 px-1 font-normal text-violet-300">
+              {String(r.attrs.class)}
+            </span>
+          ) : null}
         </p>
         <p className="truncate text-muted-foreground">
           {r.source}
@@ -76,9 +82,19 @@ function RecordRow({
           {Object.entries(r.attrs)
             .filter(
               ([k]) =>
-                !["modality", "bands", "zMin", "zMax", "zMean", "nodata"].includes(
-                  k
-                )
+                ![
+                  "modality",
+                  "bands",
+                  "zMin",
+                  "zMax",
+                  "zMean",
+                  "nodata",
+                  "embedding",
+                  "model",
+                  "origin_source",
+                  "class",
+                  "score",
+                ].includes(k)
             )
             .slice(0, 2)
             .map(([k, v]) => ` · ${k} ${v}`)
@@ -745,7 +761,12 @@ function PanelShell({
           <PanelRightClose className="h-4 w-4" />
         </Button>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">{children}</div>
+      <OverlayScrollArea
+        className="min-h-0 flex-1"
+        contentClassName="px-4 py-4"
+      >
+        {children}
+      </OverlayScrollArea>
     </aside>
   )
 }

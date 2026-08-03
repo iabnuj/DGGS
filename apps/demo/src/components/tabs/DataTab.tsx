@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Eye, EyeOff, LocateFixed, Map, RefreshCw, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
+import { Switch } from "@/components/ui/switch"
 import { FieldStylePopover } from "@/components/shell/FieldStylePopover"
+import { OverlayScrollArea } from "@/components/ui/overlay-scroll-area"
 import { getDesktopApi, isDesktopApp, confirmAction } from "@/ipcWarehouse"
 import { ingestFieldCsv } from "@dggs/grid-ingest"
 import { ingestGeoJsonText } from "@/data/ingestGeoJson"
@@ -23,9 +25,11 @@ import {
   refreshDataOverlay,
   syncLayersFromWarehouse,
 } from "@/data/warehouseBoot"
+import { buildSemanticFromSource } from "@/data/semanticPipeline"
 import { useAppStore } from "@/state/store"
 import { flyToCode, flyToCodes, getMapRuntime } from "@/map/useCesiumMap"
 import type { GridCellRecord } from "@dggs/grid-ingest"
+import { semanticSourceName } from "@dggs/grid-semantic"
 
 type PendingGeoJson = {
   kind: "geojson"
@@ -72,6 +76,22 @@ export function DataTab() {
   const progress = useAppStore((s) => s.importProgress)
   const fileRef = useRef<HTMLInputElement>(null)
   const [pending, setPending] = useState<PendingImport | null>(null)
+  /** 入格确认时是否同时生成语义向量 */
+  const [withSemantic, setWithSemantic] = useState(true)
+
+  const dataLayers = useMemo(
+    () => layers.filter((l) => !l.source.startsWith("semantic:")),
+    [layers]
+  )
+  const semanticReady = useMemo(() => {
+    const set = new Set<string>()
+    for (const l of layers) {
+      if (l.source.startsWith("semantic:") && l.count > 0) {
+        set.add(l.source)
+      }
+    }
+    return set
+  }, [layers])
 
   useEffect(() => {
     const api = getDesktopApi()
@@ -80,6 +100,21 @@ export function DataTab() {
       useAppStore.getState().setImportProgress(p)
     })
   }, [])
+
+  const maybeBuildSemantic = async (source: string, enabled: boolean) => {
+    if (!enabled) return 0
+    useAppStore.getState().setStatusText(`入格完成，正在生成语义向量 ${source}…`)
+    try {
+      return await buildSemanticFromSource(source)
+    } catch (err) {
+      useAppStore.getState().setStatusText(
+        `入格已完成，但语义生成失败: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      )
+      return -1
+    }
+  }
 
   const stageGeoJson = (name: string, text: string) => {
     const fallbackLevel = useAppStore.getState().level
@@ -145,6 +180,7 @@ export function DataTab() {
   const confirmImport = async () => {
     if (!pending) return
     const current = pending
+    const wantSemantic = withSemantic
     setPending(null)
     try {
       if (current.kind === "geojson") {
@@ -162,8 +198,10 @@ export function DataTab() {
         useAppStore.getState().patchLayer(source, { featuresVisible: true })
         applyGisFeaturesNow()
         flyToCodes(records.map((r) => r.gridId))
+        const semN = await maybeBuildSemantic(source, wantSemantic)
         useAppStore.getState().setStatusText(
-          `已导入 ${records.length} 条格 @ L${level} · 要素 ${featCount} · 已打开要素显示`
+          `已导入 ${records.length} 条格 @ L${level} · 要素 ${featCount} · 已打开要素显示` +
+            (semN > 0 ? ` · 语义 ${semN} 格` : wantSemantic && semN === 0 ? " · 语义 0 格" : "")
         )
         return
       }
@@ -185,10 +223,11 @@ export function DataTab() {
         // 同源重导时 fieldSources 引用可能不变，需强制重建色斑
         getMapRuntime()?.rebuildFieldView?.()
         flyToCodes(parsed.records.map((r) => r.gridId))
+        const semN = await maybeBuildSemantic(source, wantSemantic)
         useAppStore.getState().setStatusText(
           `已导入标量场 ${parsed.cellCount} 格 @ L${level}（${parsed.pointCount} 点 · 列 ${parsed.valueColumn}${
             parsed.unit ? ` · ${parsed.unit}` : ""
-          }）`
+          }）` + (semN > 0 ? ` · 语义 ${semN} 格` : "")
         )
         return
       }
@@ -223,8 +262,10 @@ export function DataTab() {
         if (rows.length > 0) flyToCodes(rows.map((r) => r.gridId))
         else if (result.firstGridId) flyToCode(result.firstGridId, 80_000)
       }
+      const semN = await maybeBuildSemantic(source, wantSemantic)
       useAppStore.getState().setStatusText(
-        `已导入 ${result.modality === "dem" ? "标量场" : result.modality} ${result.count} 格 @ L${result.level}`
+        `已导入 ${result.modality === "dem" ? "标量场" : result.modality} ${result.count} 格 @ L${result.level}` +
+          (semN > 0 ? ` · 语义 ${semN} 格` : "")
       )
     } catch (err) {
       useAppStore.getState().setImportProgress(null)
@@ -353,6 +394,19 @@ export function DataTab() {
                     : ""}
               </p>
             </div>
+            <div className="flex items-center justify-between gap-3 rounded-md border border-border/60 bg-muted/30 px-2.5 py-2">
+              <div className="min-w-0">
+                <Label htmlFor="with-semantic">同时生成语义向量</Label>
+                <p className="text-[10px] text-muted-foreground">
+                  入格后写入 semantic: 图层，供语义检索使用
+                </p>
+              </div>
+              <Switch
+                id="with-semantic"
+                checked={withSemantic}
+                onCheckedChange={setWithSemantic}
+              />
+            </div>
             <div className="flex gap-2">
               <Button
                 type="button"
@@ -376,30 +430,49 @@ export function DataTab() {
         </Card>
       )}
       </div>
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
-        {layers.length === 0 ? (
+      <OverlayScrollArea className="min-h-0 flex-1" contentClassName="pb-2">
+        {dataLayers.length === 0 ? (
           <p className="text-xs text-muted-foreground">暂无图层</p>
         ) : (
-          layers.map((layer) => {
+          <ul className="divide-y divide-border/60">
+            {dataLayers.map((layer) => {
             const isRaster =
               layer.type === "dem" || layer.type === "raster"
+            const hasSemantic = semanticReady.has(
+              semanticSourceName(layer.source)
+            )
             return (
-              <Card key={layer.id}>
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center justify-between gap-2">
-                    <span className="truncate">{layer.name}</span>
-                    <span className="shrink-0 text-[10px] font-normal text-muted-foreground">
+              <li key={layer.id} className="space-y-2 py-3 first:pt-1">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium leading-tight">
+                      {layer.name}
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">
+                      {layer.count.toLocaleString()} 格 · L{layer.levelMin}
+                      {layer.levelMax !== layer.levelMin
+                        ? `-${layer.levelMax}`
+                        : ""}
+                      <span className="mx-1.5 text-border">·</span>
                       {layer.type === "field" ? "标量场" : layer.type}
-                    </span>
-                  </CardTitle>
-                  <CardDescription>
-                    {layer.count.toLocaleString()} 格 · L{layer.levelMin}
-                    {layer.levelMax !== layer.levelMin
-                      ? `-${layer.levelMax}`
-                      : ""}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="flex gap-1">
+                    </p>
+                  </div>
+                  <span
+                    className={
+                      hasSemantic
+                        ? "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium text-emerald-300 ring-1 ring-emerald-500/40"
+                        : "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground ring-1 ring-border/70"
+                    }
+                    title={
+                      hasSemantic
+                        ? "已生成语义向量，可用于工具栏语义检索"
+                        : "尚未语义处理；可勾选导入时生成，或重新导入并开启"
+                    }
+                  >
+                    {hasSemantic ? "已语义" : "未语义"}
+                  </span>
+                </div>
+                <div className="flex gap-0.5">
                   <Button
                     type="button"
                     size="icon"
@@ -607,12 +680,13 @@ export function DataTab() {
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
-                </CardContent>
-              </Card>
+                </div>
+              </li>
             )
-          })
+          })}
+          </ul>
         )}
-      </div>
+      </OverlayScrollArea>
     </div>
   )
 }

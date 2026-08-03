@@ -8,9 +8,11 @@
     "build:core": "pnpm --filter @dggs/grid-core build-fast",
     "build:ingest": "pnpm --filter @dggs/grid-ingest build",
     "build:store": "pnpm --filter @dggs/grid-store build",
+    "build:semantic": "pnpm --filter @dggs/grid-semantic build",
     "test:core": "pnpm --filter @dggs/grid-core test",
     "test:ingest": "pnpm --filter @dggs/grid-ingest test",
     "test:store": "pnpm --filter @dggs/grid-store test",
+    "test:semantic": "pnpm --filter @dggs/grid-semantic test",
     "test:store:sqlite": "pnpm --filter @dggs/grid-store test:sqlite"
   },
   "engines": {

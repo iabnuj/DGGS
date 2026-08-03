@@ -16,6 +16,9 @@ importers:
       '@dggs/grid-ingest':
         specifier: workspace:*
         version: link:../../packages/grid-ingest
+      '@dggs/grid-semantic':
+        specifier: workspace:*
+        version: link:../../packages/grid-semantic
       '@dggs/grid-store':
         specifier: workspace:*
         version: link:../../packages/grid-store
@@ -143,6 +146,18 @@ importers:
       '@dggs/grid-core':
         specifier: workspace:*
         version: link:../grid-core
+    devDependencies:
+      tsup:
+        specifier: 6.6.3
+        version: 6.6.3(postcss@8.5.23)(typescript@4.9.5)
+      typescript:
+        specifier: 4.9.5
+        version: 4.9.5
+      vitest:
+        specifier: 0.28.5
+        version: 0.28.5(lightningcss@1.32.0)
+
+  packages/grid-semantic:
     devDependencies:
       tsup:
         specifier: 6.6.3

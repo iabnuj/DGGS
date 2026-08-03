@@ -12,13 +12,17 @@ import { geosot } from "@dggs/grid-core"
 import { GridLayer } from "@/grid/gridLayer"
 import { GisFeatureLayer } from "@/map/gisFeatureLayer"
 import { CellFragmentLayer } from "@/map/cellFragmentLayer"
+import { WhiteModelLayer } from "@/map/whiteModelLayer"
+import { ExternalModelLayer } from "@/map/externalModelLayer"
 import { levelFromCamera, tileZoomFromCamera } from "@/grid/levelFromHeight"
 import { createViewer } from "@/map/createViewer"
 import { applyBasemap, applyAdminOverlay, applyLighting, applyTerrain } from "@/map/basemap"
 import { useAppStore } from "@/state/store"
 import {
   bindFinishActions,
+  isLineDrawKind,
   startDrawSession,
+  startFreehandDrawSession,
   type DrawSession,
 } from "@/tools/drawSession"
 import { lineToGridCodes, polygonToGridCodes } from "@/tools/geometryToGrid"
@@ -46,6 +50,13 @@ export type MapRuntime = {
   rebuildFieldView: () => void
   /** Draw analysis overlays (envelope/buffer). */
   applyAnalysisOverlays: () => void
+  /** 格网挤出白模 */
+  drawWhiteModel: (codes: string[], heightM?: number) => void
+  clearWhiteModel: () => void
+  /** 外部 glTF / 3D Tiles */
+  loadExternalGltf: (url: string, lon: number, lat: number, height?: number) => void
+  loadExternalTileset: (url: string) => Promise<void>
+  clearExternalModel: () => void
 }
 
 let runtime: MapRuntime | null = null
@@ -122,6 +133,8 @@ export function useCesiumMap(containerId = "cesiumContainer") {
     const gridLayer = new GridLayer(viewer)
     const gisLayer = new GisFeatureLayer(viewer)
     const fragmentLayer = new CellFragmentLayer(viewer)
+    const whiteModelLayer = new WhiteModelLayer(viewer)
+    const externalModelLayer = new ExternalModelLayer(viewer)
     loadFeatureStoreFromLocalStorage()
 
     const syncHighlights = () => {
@@ -276,6 +289,12 @@ export function useCesiumMap(containerId = "cesiumContainer") {
       applyFieldView,
       rebuildFieldView,
       applyAnalysisOverlays,
+      drawWhiteModel: (codes, heightM) => whiteModelLayer.draw(codes, heightM),
+      clearWhiteModel: () => whiteModelLayer.clear(),
+      loadExternalGltf: (url, lon, lat, height) =>
+        externalModelLayer.loadGltf(url, lon, lat, height),
+      loadExternalTileset: (url) => externalModelLayer.loadTileset(url),
+      clearExternalModel: () => externalModelLayer.clear(),
     }
 
     const syncTileZoom = () => {
@@ -313,28 +332,29 @@ export function useCesiumMap(containerId = "cesiumContainer") {
       const session = drawRef.current
       if (!session) return
       const pts = session.finish()
+      const kind = session.kind
       clearDraw()
       if (!pts) {
-        useAppStore.getState().setStatusText("顶点不足，已取消绘制")
+        useAppStore.getState().setStatusText("轨迹过短，已取消绘制")
         useAppStore.getState().setToolMode("pick")
         return
       }
       const level = useAppStore.getState().level
-      const codes =
-        session.kind === "line"
-          ? lineToGridCodes(pts, level)
-          : polygonToGridCodes(pts, level)
+      const asLine = isLineDrawKind(kind)
+      const codes = asLine
+        ? lineToGridCodes(pts, level, kind === "freeLine" ? 4 : 24)
+        : polygonToGridCodes(pts, level)
       useAppStore.getState().setGridSet({
         codes,
         level,
-        from: session.kind === "line" ? "line" : "polygon",
+        from: asLine ? "line" : "polygon",
       })
       useAppStore.getState().setRightPanelOpen(true)
       useAppStore.getState().setToolMode("pick")
       useAppStore
         .getState()
         .setStatusText(
-          `${session.kind === "line" ? "线" : "面"}覆盖 ${codes.length} 格`
+          `${asLine ? "线" : "面"}覆盖 ${codes.length} 格`
         )
       refresh()
     }
@@ -352,10 +372,26 @@ export function useCesiumMap(containerId = "cesiumContainer") {
         )
     }
 
+    const startFreehand = (kind: "freeLine" | "freePolygon") => {
+      clearDraw()
+      drawRef.current = startFreehandDrawSession(viewer, kind, {
+        onComplete: () => completeDraw(),
+      })
+      useAppStore
+        .getState()
+        .setStatusText(
+          kind === "freeLine"
+            ? "自由线：按住拖动绘制，松开结束"
+            : "自由面：按住拖动勾勒，松开闭合选格"
+        )
+    }
+
     const unsubTool = useAppStore.subscribe((state, prev) => {
       if (state.toolMode === prev.toolMode) return
       if (state.toolMode === "drawLine") startDraw("line")
       else if (state.toolMode === "drawPolygon") startDraw("polygon")
+      else if (state.toolMode === "drawFreeLine") startFreehand("freeLine")
+      else if (state.toolMode === "drawFreePolygon") startFreehand("freePolygon")
       else clearDraw()
     })
 
@@ -520,6 +556,8 @@ export function useCesiumMap(containerId = "cesiumContainer") {
       viewer.camera.moveEnd.removeEventListener(scheduleRefresh)
       gisLayer.clearAll()
       fragmentLayer.clearAll()
+      whiteModelLayer.clear()
+      externalModelLayer.clear()
       if (!viewer.isDestroyed()) viewer.destroy()
       if (runtime?.viewer === viewer) runtime = null
       readyRef.current = false

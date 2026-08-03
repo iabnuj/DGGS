@@ -56,3 +56,18 @@ body,
   backdrop-filter: blur(14px);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
 }
+
+/* 原生滚动条样式保留作兜底；面板请用 OverlayScrollArea 实现不占位浮动条 */
+.scroll-fade {
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.scroll-fade::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+  background: transparent;
+}
