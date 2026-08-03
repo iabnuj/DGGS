@@ -36,10 +36,28 @@ function previewKey(r: GridCellRecord): string {
 export class CellFragmentLayer {
   private entities = new Map<string, Entity[]>()
   private chipCache = new Map<string, string>()
+  /** Coalesce concurrent sync() calls (store subscribe + explicit apply). */
+  private pending: GridCellRecord[] | null = null
+  private running = false
 
   constructor(private viewer: Viewer) {}
 
   async sync(records: GridCellRecord[]) {
+    this.pending = records
+    if (this.running) return
+    this.running = true
+    try {
+      while (this.pending) {
+        const batch = this.pending
+        this.pending = null
+        await this.apply(batch)
+      }
+    } finally {
+      this.running = false
+    }
+  }
+
+  private async apply(records: GridCellRecord[]) {
     if (this.viewer.isDestroyed()) return
     const wanted = new Set(records.map(previewKey))
 
@@ -51,10 +69,14 @@ export class CellFragmentLayer {
       const key = previewKey(r)
       if (this.entities.has(key)) continue
       if (!r.fragment) continue
+      // Reserve before await so a coalesced follow-up won't redraw the same id.
+      this.entities.set(key, [])
       try {
         const drawn = await this.drawFragment(key, r.fragment)
         if (drawn.length) this.entities.set(key, drawn)
+        else this.entities.delete(key)
       } catch (err) {
+        this.clearKey(key)
         console.error("[CellFragmentLayer] draw failed", key, err)
       }
     }

@@ -79,6 +79,8 @@ type AppState = {
   statusText: string
   gridCount: number
   fps: number
+  /** 底图 XYZ / WebMercator 瓦片显示层级 */
+  tileZoom: number
   layers: LayerInfo[]
   dataOverlayCodes: string[]
   cellFragmentPreviews: GridCellRecord[]
@@ -132,6 +134,7 @@ type AppState = {
   setStatusText: (s: string) => void
   setGridCount: (n: number) => void
   setFps: (n: number) => void
+  setTileZoom: (n: number) => void
   setLayers: (layers: LayerInfo[]) => void
   patchLayer: (id: string, patch: Partial<LayerInfo>) => void
   setDataOverlayCodes: (codes: string[]) => void
@@ -180,6 +183,7 @@ export const useAppStore = create<AppState>((set) => ({
   statusText: "就绪",
   gridCount: 0,
   fps: 0,
+  tileZoom: 0,
   layers: [],
   dataOverlayCodes: [],
   cellFragmentPreviews: [],
@@ -262,6 +266,7 @@ export const useAppStore = create<AppState>((set) => ({
   setStatusText: (statusText) => set({ statusText }),
   setGridCount: (gridCount) => set({ gridCount }),
   setFps: (fps) => set({ fps }),
+  setTileZoom: (tileZoom) => set({ tileZoom }),
   setLayers: (layers) => set({ layers }),
   patchLayer: (id, patch) =>
     set((s) => ({

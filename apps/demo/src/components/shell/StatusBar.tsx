@@ -23,6 +23,9 @@ function Stat({
 
 export function StatusBar() {
   const cursor = useAppStore((s) => s.cursor)
+  const level = useAppStore((s) => s.level)
+  const autoLevel = useAppStore((s) => s.autoLevel)
+  const tileZoom = useAppStore((s) => s.tileZoom)
   const gridCount = useAppStore((s) => s.gridCount)
   const fps = useAppStore((s) => s.fps)
   const statusText = useAppStore((s) => s.statusText)
@@ -48,6 +51,11 @@ export function StatusBar() {
         </span>
       </div>
       <div className="flex shrink-0 items-center gap-5">
+        <Stat
+          label="网格"
+          value={autoLevel ? `L${level}·自动` : `L${level}`}
+        />
+        <Stat label="瓦片" value={tileZoom > 0 ? `Z${tileZoom}` : "—"} />
         <Stat label="FPS" value={fps ? String(fps) : "—"} />
         <Stat label="格数" value={gridCount.toLocaleString()} />
       </div>

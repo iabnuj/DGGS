@@ -12,7 +12,7 @@ import { geosot } from "@dggs/grid-core"
 import { GridLayer } from "@/grid/gridLayer"
 import { GisFeatureLayer } from "@/map/gisFeatureLayer"
 import { CellFragmentLayer } from "@/map/cellFragmentLayer"
-import { levelFromHeight } from "@/grid/levelFromHeight"
+import { levelFromCamera, tileZoomFromCamera } from "@/grid/levelFromHeight"
 import { createViewer } from "@/map/createViewer"
 import { applyBasemap, applyAdminOverlay, applyLighting, applyTerrain } from "@/map/basemap"
 import { useAppStore } from "@/state/store"
@@ -212,8 +212,8 @@ export function useCesiumMap(containerId = "cesiumContainer") {
 
       let level = s.level
       if (s.autoLevel) {
-        const carto = Cartographic.fromCartesian(viewer.camera.positionWC)
-        const next = levelFromHeight(carto.height)
+        // 2D 缩放不改相机高度，必须用视窗跨度，否则会卡在 L6
+        const next = levelFromCamera(viewer)
         if (next !== s.level) useAppStore.getState().setLevel(next)
         level = next
       }
@@ -227,10 +227,12 @@ export function useCesiumMap(containerId = "cesiumContainer") {
       })
 
       try {
-        const { count, truncated, skipped } = gridLayer.refresh(level, {
-          force,
-          highlights: syncHighlights(),
-        })
+        const requestedLevel = level
+        const { count, truncated, skipped, level: drawnLevel } =
+          gridLayer.refresh(level, {
+            force,
+            highlights: syncHighlights(),
+          })
         if (skipped) {
           // Skipped mesh rebuild still needs data overlay if eye just toggled.
           gridLayer.applyDataOverlay(
@@ -241,8 +243,8 @@ export function useCesiumMap(containerId = "cesiumContainer") {
         }
         if (s.gridCount !== count) useAppStore.getState().setGridCount(count)
         const text = truncated
-          ? `视窗过大，已降级 · L${level} · ${count} 格`
-          : `L${level} · ${count} 格`
+          ? `视窗过大，已降级 · L${drawnLevel}（目标 L${requestedLevel}）· ${count} 格`
+          : `L${drawnLevel} · ${count} 格`
         if (useAppStore.getState().statusText !== text) {
           useAppStore.getState().setStatusText(text)
         }
@@ -281,9 +283,15 @@ export function useCesiumMap(containerId = "cesiumContainer") {
       window.clearTimeout(refreshTimer)
       // Settle after pan/zoom; skip rebuild if view signature unchanged.
       refreshTimer = window.setTimeout(() => refresh(false), 320)
+      const z = tileZoomFromCamera(viewer)
+      if (z !== useAppStore.getState().tileZoom) {
+        useAppStore.getState().setTileZoom(z)
+      }
     }
 
     viewer.camera.moveEnd.addEventListener(scheduleRefresh)
+    // Initial tile zoom once the viewer is up.
+    useAppStore.getState().setTileZoom(tileZoomFromCamera(viewer))
 
     const clearDraw = () => {
       drawRef.current?.destroy()
@@ -359,6 +367,8 @@ export function useCesiumMap(containerId = "cesiumContainer") {
       if (state.cellFragmentPreviews === prev.cellFragmentPreviews) return
       applyCellFragments()
     })
+    // Apply any previews that were toggled before the viewer mounted.
+    applyCellFragments()
 
     const unsubField = useAppStore.subscribe((state, prev) => {
       if (state.fieldSources === prev.fieldSources) return
@@ -460,7 +470,10 @@ export function useCesiumMap(containerId = "cesiumContainer") {
       frames++
       const now = performance.now()
       if (now - lastFrame >= 1000) {
-        useAppStore.getState().setFps(frames)
+        const store = useAppStore.getState()
+        store.setFps(frames)
+        const z = tileZoomFromCamera(viewer)
+        if (z !== store.tileZoom) store.setTileZoom(z)
         frames = 0
         lastFrame = now
       }

@@ -279,8 +279,9 @@ export class GridLayer {
 
   private viewSignature(level: number): string {
     const cellDeg = 180 / 2 ** Math.max(1, level)
-    const q = Math.max(cellDeg * 0.4, 0.002)
-    const quantDeg = (deg: number) => (Math.round(deg / q) * q).toFixed(5)
+    // Floor must shrink with fine levels; 0.002° froze refresh past ~L16.
+    const q = Math.max(cellDeg * 0.4, 1e-6)
+    const quantDeg = (deg: number) => (Math.round(deg / q) * q).toFixed(6)
     const quantRad = (rad: number) => quantDeg(CesiumMath.toDegrees(rad))
     const style = this.styleSignature(this.options)
     const rect = this.viewer.camera.computeViewRectangle()
@@ -671,9 +672,9 @@ export class GridLayer {
   refresh(
     level: number,
     opts?: { force?: boolean; highlights?: Iterable<string> }
-  ): { count: number; truncated: boolean; skipped: boolean } {
+  ): { count: number; truncated: boolean; skipped: boolean; level: number } {
     if (this.viewer.isDestroyed()) {
-      return { count: 0, truncated: false, skipped: true }
+      return { count: 0, truncated: false, skipped: true, level }
     }
 
     const nextHighlights =
@@ -685,7 +686,12 @@ export class GridLayer {
     if (!opts?.force && key === this.lastViewKey && this.cells.length > 0) {
       // Same viewport: only refresh selection colors.
       this.applyHighlights(nextHighlights)
-      return { count: this.cells.length, truncated: false, skipped: true }
+      return {
+        count: this.cells.length,
+        truncated: false,
+        skipped: true,
+        level,
+      }
     }
 
     this.highlightCodes = nextHighlights
@@ -698,13 +704,21 @@ export class GridLayer {
     if (bboxes.length === 0) {
       this.clear()
       this.lastViewKey = ""
-      return { count: 0, truncated: false, skipped: false }
+      return { count: 0, truncated: false, skipped: false, level }
     }
 
-    const { codes, truncated } = this.collectCodes(bboxes, level)
+    const { codes, truncated, level: usedLevel } = this.collectCodes(
+      bboxes,
+      level
+    )
     this.draw(codes)
     this.lastViewKey = key
-    return { count: this.cells.length, truncated, skipped: false }
+    return {
+      count: this.cells.length,
+      truncated,
+      skipped: false,
+      level: usedLevel,
+    }
   }
 
   draw(codes: string[]) {

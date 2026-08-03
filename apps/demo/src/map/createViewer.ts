@@ -29,6 +29,8 @@ export function createViewer(container: HTMLElement): Viewer {
   viewer.scene.msaaSamples = 1
   viewer.scene.fog.enabled = false
   viewer.scene.globe.baseColor = Color.fromCssColorString("#1a222c")
+  // 默认 1m 近距到不了 L30+；放到厘米级才能试到 L32
+  viewer.scene.screenSpaceCameraController.minimumZoomDistance = 0.05
 
   viewer.camera.setView({
     destination: Cartesian3.fromDegrees(116.4, 39.9, 180_000),

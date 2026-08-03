@@ -86,8 +86,8 @@ export function DisplayTab() {
         </div>
         <Slider
           value={[level]}
-          min={8}
-          max={15}
+          min={0}
+          max={32}
           step={1}
           onValueChange={([v]) => {
             useAppStore.getState().setAutoLevel(false)

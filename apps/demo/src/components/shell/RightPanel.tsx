@@ -31,12 +31,10 @@ type CellGroup = {
   records: GridCellRecord[]
 }
 
-function applyCellFragmentPreviews(): boolean {
+/** Store subscribe already syncs previews; only verify the map is ready. */
+function ensureMapReadyForFragments(): boolean {
   const rt = getMapRuntime()
-  if (rt?.applyCellFragments) {
-    rt.applyCellFragments()
-    return true
-  }
+  if (rt?.applyCellFragments) return true
   useAppStore.getState().setStatusText("地图未就绪，请刷新桌面端后再上图")
   return false
 }
@@ -119,7 +117,7 @@ function RecordRow({
             return
           }
           useAppStore.getState().toggleCellFragmentPreview(r)
-          if (!applyCellFragmentPreviews()) return
+          if (!ensureMapReadyForFragments()) return
           const nowOn = useAppStore
             .getState()
             .cellFragmentPreviews.some((x) => fragmentPreviewKey(x) === key)
@@ -482,7 +480,7 @@ function PreviewToolbar({
               cellPreviewKeys,
               on ? previewable : []
             )
-          if (!applyCellFragmentPreviews()) return
+          if (!ensureMapReadyForFragments()) return
           useAppStore
             .getState()
             .setStatusText(
