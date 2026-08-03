@@ -55,7 +55,7 @@ export function StatusBar() {
           label="网格"
           value={autoLevel ? `L${level}·自动` : `L${level}`}
         />
-        <Stat label="瓦片" value={tileZoom > 0 ? `Z${tileZoom}` : "—"} />
+        <Stat label="瓦片" value={tileZoom >= 0 ? `Z${tileZoom}` : "—"} />
         <Stat label="FPS" value={fps ? String(fps) : "—"} />
         <Stat label="格数" value={gridCount.toLocaleString()} />
       </div>

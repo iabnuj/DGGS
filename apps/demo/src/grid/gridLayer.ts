@@ -24,9 +24,11 @@ import {
   RectangleOutlineGeometry,
   VerticalOrigin,
   ArcType,
+  SceneMode,
   type Viewer,
 } from "cesium"
 import { geosot, cover } from "@dggs/grid-core"
+import { viewBBoxFromOrthographic } from "@/grid/levelFromHeight"
 
 type BBox = { west: number; south: number; east: number; north: number }
 
@@ -174,6 +176,57 @@ function fallbackBBoxes(viewer: Viewer): BBox[] {
   return []
 }
 
+/** 当前视口覆盖 bbox；2D 用正交视锥，避免 computeViewRectangle 跨度不随缩放变化。 */
+function cameraViewBBoxes(viewer: Viewer): BBox[] {
+  const mode = viewer.scene.mode
+  if (mode === SceneMode.SCENE2D || mode === SceneMode.COLUMBUS_VIEW) {
+    const box = viewBBoxFromOrthographic(viewer)
+    if (box) {
+      const parts = lonLatBBoxToParts(box)
+      if (parts.length > 0) return parts
+    }
+  }
+  const rect = viewer.camera.computeViewRectangle()
+  let bboxes = rect ? viewRectToBBoxes(rect) : []
+  if (bboxes.length === 0) bboxes = fallbackBBoxes(viewer)
+  return bboxes
+}
+
+function lonLatBBoxToParts(box: {
+  west: number
+  south: number
+  east: number
+  north: number
+}): BBox[] {
+  const south = clampLat(box.south)
+  const north = clampLat(box.north)
+  if (!(south < north)) return []
+
+  let west = box.west
+  let east = box.east
+  // Normalize into (-180, 180] style ranges; split on antimeridian.
+  if (east - west >= 360) {
+    return [{ west: -MAX_LON, south, east: MAX_LON, north }]
+  }
+  while (west < -180) {
+    west += 360
+    east += 360
+  }
+  while (west > 180) {
+    west -= 360
+    east -= 360
+  }
+  if (east <= 180) {
+    west = clampLon(west)
+    east = clampLon(east)
+    return west < east ? [{ west, south, east, north }] : []
+  }
+  return [
+    { west: clampLon(west), south, east: MAX_LON, north },
+    { west: -MAX_LON, south, east: clampLon(east - 360), north },
+  ].filter((b) => b.west < b.east && b.south < b.north)
+}
+
 type AnyPrimitive = Primitive | GroundPrimitive | GroundPolylinePrimitive
 
 /**
@@ -284,6 +337,23 @@ export class GridLayer {
     const quantDeg = (deg: number) => (Math.round(deg / q) * q).toFixed(6)
     const quantRad = (rad: number) => quantDeg(CesiumMath.toDegrees(rad))
     const style = this.styleSignature(this.options)
+
+    const mode = this.viewer.scene.mode
+    if (mode === SceneMode.SCENE2D || mode === SceneMode.COLUMBUS_VIEW) {
+      const box = viewBBoxFromOrthographic(this.viewer)
+      if (box) {
+        return [
+          "2d",
+          level,
+          quantDeg(box.west),
+          quantDeg(box.south),
+          quantDeg(box.east),
+          quantDeg(box.north),
+          style,
+        ].join("|")
+      }
+    }
+
     const rect = this.viewer.camera.computeViewRectangle()
     if (!rect) {
       const c = this.viewer.camera.positionCartographic
@@ -696,11 +766,7 @@ export class GridLayer {
 
     this.highlightCodes = nextHighlights
 
-    const rect = this.viewer.camera.computeViewRectangle()
-    let bboxes = rect ? viewRectToBBoxes(rect) : []
-    if (bboxes.length === 0) {
-      bboxes = fallbackBBoxes(this.viewer)
-    }
+    const bboxes = cameraViewBBoxes(this.viewer)
     if (bboxes.length === 0) {
       this.clear()
       this.lastViewKey = ""

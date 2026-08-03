@@ -183,7 +183,7 @@ export const useAppStore = create<AppState>((set) => ({
   statusText: "就绪",
   gridCount: 0,
   fps: 0,
-  tileZoom: 0,
+  tileZoom: -1,
   layers: [],
   dataOverlayCodes: [],
   cellFragmentPreviews: [],

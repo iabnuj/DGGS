@@ -278,20 +278,29 @@ export function useCesiumMap(containerId = "cesiumContainer") {
       applyAnalysisOverlays,
     }
 
-    let refreshTimer: number | undefined
-    const scheduleRefresh = () => {
-      window.clearTimeout(refreshTimer)
-      // Settle after pan/zoom; skip rebuild if view signature unchanged.
-      refreshTimer = window.setTimeout(() => refresh(false), 320)
+    const syncTileZoom = () => {
+      if (cancelled || viewer.isDestroyed()) return
       const z = tileZoomFromCamera(viewer)
       if (z !== useAppStore.getState().tileZoom) {
         useAppStore.getState().setTileZoom(z)
       }
     }
 
+    let refreshTimer: number | undefined
+    const scheduleRefresh = () => {
+      window.clearTimeout(refreshTimer)
+      // Settle after pan/zoom; skip rebuild if view signature unchanged.
+      refreshTimer = window.setTimeout(() => refresh(false), 320)
+      syncTileZoom()
+    }
+
     viewer.camera.moveEnd.addEventListener(scheduleRefresh)
-    // Initial tile zoom once the viewer is up.
-    useAppStore.getState().setTileZoom(tileZoomFromCamera(viewer))
+    const onMorphComplete = () => {
+      syncTileZoom()
+      if (!cancelled && !viewer.isDestroyed()) refresh(true)
+    }
+    viewer.scene.morphComplete.addEventListener(onMorphComplete)
+    syncTileZoom()
 
     const clearDraw = () => {
       drawRef.current?.destroy()
@@ -507,6 +516,8 @@ export function useCesiumMap(containerId = "cesiumContainer") {
       clearDraw()
       handler.destroy()
       viewer.clock.onTick.removeEventListener(onTick)
+      viewer.scene.morphComplete.removeEventListener(onMorphComplete)
+      viewer.camera.moveEnd.removeEventListener(scheduleRefresh)
       gisLayer.clearAll()
       fragmentLayer.clearAll()
       if (!viewer.isDestroyed()) viewer.destroy()
