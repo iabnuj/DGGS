@@ -51,7 +51,7 @@ export function MapTab() {
         <div className="min-w-0">
           <Label htmlFor="terrain">地形高程</Label>
           <p className="text-[10px] text-muted-foreground">
-            开启后网格贴地绘制（拉伸暂改平面）
+            Cesium 地貌起伏（底图级）。业务「高程/DEM 二维场」以色斑+左下角图例显示，二者不同。
           </p>
         </div>
         <Switch

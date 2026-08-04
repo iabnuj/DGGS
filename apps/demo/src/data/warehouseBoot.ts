@@ -25,9 +25,14 @@ export async function syncLayersFromWarehouse() {
   const layers = layersFromRecords(rows)
   const store = useAppStore.getState()
   store.setLayers(layers)
-  // 可见标量场层同步到渲染源（导入 / 启动后色斑能跟上）
+  // 仅同步业务场 / DEM，排除 semantic: 派生层
+  store.clearFieldSources()
   for (const layer of layers) {
-    if (layer.type === "field" && layer.visible) {
+    if (
+      layer.visible &&
+      (layer.type === "field" || layer.type === "dem") &&
+      !layer.source.startsWith("semantic:")
+    ) {
       store.addFieldSource(layer.source)
     }
   }

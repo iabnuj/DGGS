@@ -13,6 +13,7 @@ import { GridLayer } from "@/grid/gridLayer"
 import { GisFeatureLayer } from "@/map/gisFeatureLayer"
 import { CellFragmentLayer } from "@/map/cellFragmentLayer"
 import { WhiteModelLayer } from "@/map/whiteModelLayer"
+import { VolumeFieldLayer } from "@/map/volumeFieldLayer"
 import { ExternalModelLayer } from "@/map/externalModelLayer"
 import { levelFromCamera, tileZoomFromCamera } from "@/grid/levelFromHeight"
 import { createViewer } from "@/map/createViewer"
@@ -50,9 +51,18 @@ export type MapRuntime = {
   rebuildFieldView: () => void
   /** Draw analysis overlays (envelope/buffer). */
   applyAnalysisOverlays: () => void
-  /** 格网挤出白模 */
+  /** 格网挤出白模（体对象） */
   drawWhiteModel: (codes: string[], heightM?: number) => void
+  drawWhiteModelCells: (
+    cells: { code: string; heightM: number }[]
+  ) => void
   clearWhiteModel: () => void
+  /** 三维球体场 */
+  drawVolumeField: (
+    cells: { code: string; color: string; t: number }[],
+    opts?: { layers?: number; totalHeightM?: number }
+  ) => void
+  clearVolumeField: () => void
   /** 外部 glTF / 3D Tiles */
   loadExternalGltf: (url: string, lon: number, lat: number, height?: number) => void
   loadExternalTileset: (url: string) => Promise<void>
@@ -117,6 +127,15 @@ export function resetChinaView() {
   })
 }
 
+/** 体对象 / 立体场：打开地球光照与阴影，侧面才有明暗 */
+function ensureSceneLighting(viewer: Viewer) {
+  if (viewer.isDestroyed()) return
+  if (!useAppStore.getState().lighting) {
+    useAppStore.getState().setLighting(true)
+  }
+  applyLighting(viewer, true)
+}
+
 export function useCesiumMap(containerId = "cesiumContainer") {
   const readyRef = useRef(false)
   const drawRef = useRef<DrawSession | null>(null)
@@ -134,6 +153,7 @@ export function useCesiumMap(containerId = "cesiumContainer") {
     const gisLayer = new GisFeatureLayer(viewer)
     const fragmentLayer = new CellFragmentLayer(viewer)
     const whiteModelLayer = new WhiteModelLayer(viewer)
+    const volumeFieldLayer = new VolumeFieldLayer(viewer)
     const externalModelLayer = new ExternalModelLayer(viewer)
     loadFeatureStoreFromLocalStorage()
 
@@ -171,10 +191,20 @@ export function useCesiumMap(containerId = "cesiumContainer") {
       if (cancelled || viewer.isDestroyed()) return
       const s = useAppStore.getState()
       const opacityBySource: Record<string, number> = {}
-      for (const source of Object.keys(s.fieldColorMaps)) {
+      // 只画当前 fieldSources，避免眼睛关掉后仍用旧 colorMap
+      const maps: Record<string, Map<string, string>> = {}
+      for (const source of s.fieldSources) {
+        const m = s.fieldColorMaps[source]
+        if (!m || m.size === 0) continue
+        maps[source] = m
         opacityBySource[source] = resolveFieldStyle(source).opacity
       }
-      gridLayer.drawFieldViewFromSources(s.fieldColorMaps, opacityBySource)
+      if (Object.keys(maps).length === 0) {
+        gridLayer.clearFieldView()
+        viewer.scene.requestRender()
+        return
+      }
+      gridLayer.drawFieldViewFromSources(maps, opacityBySource)
       viewer.scene.requestRender()
     }
 
@@ -290,7 +320,18 @@ export function useCesiumMap(containerId = "cesiumContainer") {
       rebuildFieldView,
       applyAnalysisOverlays,
       drawWhiteModel: (codes, heightM) => whiteModelLayer.draw(codes, heightM),
+      drawWhiteModelCells: (cells) => {
+        ensureSceneLighting(viewer)
+        whiteModelLayer.drawCells(cells)
+      },
       clearWhiteModel: () => whiteModelLayer.clear(),
+      drawVolumeField: (cells, opts) => {
+        ensureSceneLighting(viewer)
+        volumeFieldLayer.draw(cells, opts)
+        // 斜视，避免俯视只看到「填色格子」
+        window.setTimeout(() => volumeFieldLayer.tiltForVolume(), 200)
+      },
+      clearVolumeField: () => volumeFieldLayer.clear(),
       loadExternalGltf: (url, lon, lat, height) =>
         externalModelLayer.loadGltf(url, lon, lat, height),
       loadExternalTileset: (url) => externalModelLayer.loadTileset(url),

@@ -311,11 +311,13 @@ export function layersFromRecords(records: GridCellRecord[]) {
     const levels = rows.map((r) => r.level)
     const old = prev.get(source)
     const first = rows[0]
+    const isSemantic = source.startsWith("semantic:")
     return {
       id: source,
       name: first?.label ?? source,
-      type:
-        typeof first?.attrs?.field_value === "number"
+      type: isSemantic
+        ? "semantic"
+        : typeof first?.attrs?.field_value === "number"
           ? "field"
           : first?.ref?.kind === "raster"
             ? first.attrs?.modality === "dem"
@@ -325,7 +327,8 @@ export function layersFromRecords(records: GridCellRecord[]) {
       count: new Set(rows.map((r) => r.gridId)).size,
       levelMin: Math.min(...levels),
       levelMax: Math.max(...levels),
-      visible: old?.visible ?? true,
+      // 语义派生层默认不进场渲染
+      visible: isSemantic ? false : (old?.visible ?? true),
       featuresVisible: old?.featuresVisible ?? false,
       source,
     }

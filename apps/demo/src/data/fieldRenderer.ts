@@ -119,10 +119,39 @@ export function listRampPresets(): { id: string; name: string; ramp: ColorRamp }
 }
 
 export function defaultFieldStyle(source: string): FieldStyleConfig {
-  return {
-    rampId: source in RAMP_PRESETS ? source : "default",
-    opacity: 75,
+  // 去掉 semantic: 前缀再匹配，避免误用
+  const raw = source.startsWith("semantic:")
+    ? source.slice("semantic:".length)
+    : source
+  const s = raw.toLowerCase()
+  if (raw in RAMP_PRESETS) {
+    return { rampId: raw, opacity: 75 }
   }
+  if (s in RAMP_PRESETS) {
+    return { rampId: s, opacity: 75 }
+  }
+  if (/elev|dem|terrain|height|高程|地形|dtm|dsm/.test(s)) {
+    return { rampId: "elevation", opacity: 80 }
+  }
+  if (/temp|气温|温度/.test(s)) {
+    return { rampId: "temperature", opacity: 75 }
+  }
+  if (/wind|风速/.test(s)) {
+    return { rampId: "wind_speed", opacity: 75 }
+  }
+  if (/press|气压/.test(s)) {
+    return { rampId: "pressure", opacity: 75 }
+  }
+  if (/radar|雷达/.test(s)) {
+    return { rampId: "radar_coverage", opacity: 70 }
+  }
+  if (/em_|电磁/.test(s)) {
+    return { rampId: "em_intensity", opacity: 75 }
+  }
+  if (/water|水文|潮/.test(s)) {
+    return { rampId: "water_temp", opacity: 75 }
+  }
+  return { rampId: "default", opacity: 75 }
 }
 
 export function resolveFieldStyle(source: string): FieldStyleConfig {

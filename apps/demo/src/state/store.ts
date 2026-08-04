@@ -214,9 +214,13 @@ export const useAppStore = create<AppState>((set) => ({
       return { fieldSources: [...s.fieldSources, source] }
     }),
   removeFieldSource: (source) =>
-    set((s) => ({
-      fieldSources: s.fieldSources.filter((f) => f !== source),
-    })),
+    set((s) => {
+      const { [source]: _drop, ...restMaps } = s.fieldColorMaps
+      return {
+        fieldSources: s.fieldSources.filter((f) => f !== source),
+        fieldColorMaps: restMaps,
+      }
+    }),
   clearFieldSources: () => set({ fieldSources: [], fieldColorMaps: {} }),
   setFieldColorMaps: (fieldColorMaps) => set({ fieldColorMaps }),
   setFieldStyle: (source, patch) =>

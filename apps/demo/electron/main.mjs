@@ -80,10 +80,65 @@ async function loadSqliteWarehouse() {
 
 async function ensureWarehouse() {
   if (warehouse) return warehouse
+  await migrateLegacyUserDataIfNeeded()
   const SqliteWarehouse = await loadSqliteWarehouse()
   const dbPath = path.join(app.getPath("userData"), "dggs-demo.sqlite")
   warehouse = new SqliteWarehouse(dbPath)
   return warehouse
+}
+
+/**
+ * 产品更名后 Electron userData 目录会变（格网引擎 → 格网编码系统）。
+ * 若新目录库为空且旧目录仍有数据，则一次性拷贝过来，避免“数据丢了”的错觉。
+ */
+async function migrateLegacyUserDataIfNeeded() {
+  const userData = app.getPath("userData")
+  const newDb = path.join(userData, "dggs-demo.sqlite")
+  const legacyRoots = [
+    path.join(app.getPath("appData"), "格网引擎"),
+    path.join(app.getPath("appData"), "DGGS Demo"),
+  ]
+
+  let newSize = 0
+  try {
+    newSize = (await fs.stat(newDb)).size
+  } catch {
+    newSize = 0
+  }
+  // 空库或几乎空（仅 SQLite 头）
+  if (newSize > 64_000) return
+
+  for (const root of legacyRoots) {
+    const oldDb = path.join(root, "dggs-demo.sqlite")
+    try {
+      const st = await fs.stat(oldDb)
+      if (st.size <= newSize) continue
+      await fs.mkdir(userData, { recursive: true })
+      await fs.copyFile(oldDb, newDb)
+      for (const ext of ["-wal", "-shm"]) {
+        try {
+          await fs.copyFile(oldDb + ext, newDb + ext)
+        } catch {
+          /* optional */
+        }
+      }
+      // chips 目录（栅格切片）
+      const oldChips = path.join(root, "chips")
+      const newChips = path.join(userData, "chips")
+      try {
+        await fs.access(oldChips)
+        if (!existsSync(newChips)) {
+          await fs.cp(oldChips, newChips, { recursive: true })
+        }
+      } catch {
+        /* no chips */
+      }
+      log("[dggs] migrated warehouse from", oldDb, "→", newDb)
+      return
+    } catch {
+      /* try next legacy root */
+    }
+  }
 }
 
 function sendToRenderer(channel, payload) {

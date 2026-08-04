@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Eye, EyeOff, LocateFixed, Map, Trash2, Upload } from "lucide-react"
+import { Box, Boxes, Eye, EyeOff, LocateFixed, Map, Trash2, Upload } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
@@ -26,6 +26,10 @@ import {
   syncLayersFromWarehouse,
 } from "@/data/warehouseBoot"
 import { buildSemanticFromSource } from "@/data/semanticPipeline"
+import {
+  loadVolumeCells,
+  loadWhiteModelCells,
+} from "@/data/vizPipeline"
 import { useAppStore } from "@/state/store"
 import { flyToCode, flyToCodes, getMapRuntime } from "@/map/useCesiumMap"
 import type { GridCellRecord } from "@dggs/grid-ingest"
@@ -78,6 +82,10 @@ export function DataTab() {
   const [pending, setPending] = useState<PendingImport | null>(null)
   /** 入格确认时是否同时生成语义向量 */
   const [withSemantic, setWithSemantic] = useState(true)
+  /** 当前体对象白模来源 */
+  const [whiteModelSource, setWhiteModelSource] = useState<string | null>(null)
+  /** 当前三维场来源 */
+  const [volumeSource, setVolumeSource] = useState<string | null>(null)
 
   const dataLayers = useMemo(
     () => layers.filter((l) => !l.source.startsWith("semantic:")),
@@ -495,15 +503,36 @@ export function DataTab() {
                         useAppStore.getState().patchLayer(layer.id, {
                           visible: nextVisible,
                         })
-                        // 场数据层：切换 fieldSources
-                        if (layer.type === "field") {
+                        // 场数据层 / DEM：切换 fieldSources
+                        if (layer.type === "field" || layer.type === "dem") {
                           const s = useAppStore.getState()
                           if (nextVisible) {
                             s.addFieldSource(layer.source)
                           } else {
                             s.removeFieldSource(layer.source)
+                            // 关显示时一并关掉立体场
+                            if (volumeSource === layer.source) {
+                              getMapRuntime()?.clearVolumeField?.()
+                              setVolumeSource(null)
+                            }
                           }
+                          getMapRuntime()?.rebuildFieldView?.()
+                          useAppStore
+                            .getState()
+                            .setStatusText(
+                              nextVisible
+                                ? `显示标量场「${layer.name}」`
+                                : `隐藏标量场「${layer.name}」`
+                            )
                           return
+                        }
+                        // 关矢量显示时清掉该层体对象白模
+                        if (
+                          !nextVisible &&
+                          whiteModelSource === layer.source
+                        ) {
+                          getMapRuntime()?.clearWhiteModel?.()
+                          setWhiteModelSource(null)
                         }
                         // 常规数据层：刷新 dataOverlay
                         const codes = await refreshDataOverlay()
@@ -529,12 +558,12 @@ export function DataTab() {
                       <EyeOff className="h-4 w-4" />
                     )}
                   </Button>
-                  {layer.type === "field" && (
+                  {layer.type === "field" || layer.type === "dem" ? (
                     <FieldStylePopover
                       source={layer.source}
                       label={layer.name}
                     />
-                  )}
+                  ) : null}
                   <Button
                     type="button"
                     size="icon"
@@ -579,6 +608,109 @@ export function DataTab() {
                       <Map className="h-4 w-4 opacity-35" />
                     )}
                   </Button>
+                  {layer.type === "vector" || layer.type === "raster" ? (
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant={
+                        whiteModelSource === layer.source ? "secondary" : "ghost"
+                      }
+                      title={
+                        whiteModelSource === layer.source
+                          ? "清除体对象白模"
+                          : "体对象：剖分立方格白模"
+                      }
+                      onClick={() => {
+                        void (async () => {
+                          const rt = getMapRuntime()
+                          if (!rt?.drawWhiteModelCells) {
+                            useAppStore.getState().setStatusText("地图未就绪")
+                            return
+                          }
+                          if (whiteModelSource === layer.source) {
+                            rt.clearWhiteModel?.()
+                            setWhiteModelSource(null)
+                            useAppStore.getState().setStatusText("已清除体对象白模")
+                            return
+                          }
+                          useAppStore
+                            .getState()
+                            .setStatusText(`正在生成体对象「${layer.name}」…`)
+                          const cells = await loadWhiteModelCells(layer.source)
+                          if (cells.length === 0) {
+                            useAppStore
+                              .getState()
+                              .setStatusText("该图层无格网记录")
+                            return
+                          }
+                          rt.drawWhiteModelCells(cells)
+                          setWhiteModelSource(layer.source)
+                          flyToCodes(cells.map((c) => c.code))
+                          useAppStore
+                            .getState()
+                            .setStatusText(
+                              `体对象白模 ${cells.length} 格（高度取 attrs 或默认 24m）`
+                            )
+                        })()
+                      }}
+                    >
+                      <Box className="h-4 w-4" />
+                    </Button>
+                  ) : null}
+                  {layer.type === "field" || layer.type === "dem" ? (
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant={
+                        volumeSource === layer.source ? "secondary" : "ghost"
+                      }
+                      title={
+                        volumeSource === layer.source
+                          ? "清除三维球体场"
+                          : "三维球体场：多层挤出着色"
+                      }
+                      onClick={() => {
+                        void (async () => {
+                          const rt = getMapRuntime()
+                          if (!rt?.drawVolumeField) {
+                            useAppStore.getState().setStatusText("地图未就绪")
+                            return
+                          }
+                          if (volumeSource === layer.source) {
+                            rt.clearVolumeField?.()
+                            setVolumeSource(null)
+                            useAppStore
+                              .getState()
+                              .setStatusText("已清除三维球体场")
+                            return
+                          }
+                          useAppStore
+                            .getState()
+                            .setStatusText(`正在生成立体场「${layer.name}」…`)
+                          const cells = await loadVolumeCells(layer.source)
+                          if (cells.length === 0) {
+                            useAppStore
+                              .getState()
+                              .setStatusText("无 field_value，无法生成立体场")
+                            return
+                          }
+                          rt.drawVolumeField(cells)
+                          setVolumeSource(layer.source)
+                          // 确保平面色斑也开着，便于对照
+                          useAppStore.getState().addFieldSource(layer.source)
+                          getMapRuntime()?.rebuildFieldView?.()
+                          flyToCodes(cells.map((c) => c.code))
+                          useAppStore
+                            .getState()
+                            .setStatusText(
+                              `三维球体场 ${cells.length} 格 · 多层挤出`
+                            )
+                        })()
+                      }}
+                    >
+                      <Boxes className="h-4 w-4" />
+                    </Button>
+                  ) : null}
                   <Button
                     type="button"
                     size="icon"
