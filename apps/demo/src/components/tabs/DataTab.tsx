@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Eye, EyeOff, LocateFixed, Map, Trash2 } from "lucide-react"
+import { Eye, EyeOff, LocateFixed, Map, Trash2, Upload } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
@@ -337,12 +337,23 @@ export function DataTab() {
         }}
       />
       <div className="shrink-0 space-y-3">
-      <Button type="button" className="w-full" onClick={() => void onImportClick()}>
-        导入数据{" "}
-        {isDesktopApp()
-          ? "(GeoJSON / SHP / GeoTIFF / CSV)"
-          : "(GeoJSON / CSV)"}
-      </Button>
+      <div className="flex items-center justify-center">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 gap-1.5 px-2.5 text-xs font-normal text-muted-foreground"
+          title={
+            isDesktopApp()
+              ? "导入 GeoJSON / SHP / GeoTIFF / CSV"
+              : "导入 GeoJSON / CSV"
+          }
+          onClick={() => void onImportClick()}
+        >
+          <Upload className="h-3.5 w-3.5" />
+          导入
+        </Button>
+      </div>
       {progress != null && (
         <div className="h-1.5 overflow-hidden rounded-full bg-muted">
           <div

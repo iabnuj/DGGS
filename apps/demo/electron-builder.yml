@@ -1,6 +1,6 @@
 appId: com.dggs.demo
-productName: 格网引擎
-executableName: 格网引擎
+productName: 格网编码系统
+executableName: 格网编码系统
 artifactName: ${productName}-${version}-${os}-${arch}.${ext}
 directories:
   output: release

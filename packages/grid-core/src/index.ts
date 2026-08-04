@@ -9,6 +9,8 @@ import * as envelope from "./envelope"
 import * as buffer from "./buffer"
 import * as boolean from "./boolean"
 import * as path from "./path"
+import * as beidou from "./beidou"
+import * as convert from "./convert"
 export {
   geosot,
   geosot3d,
@@ -21,4 +23,6 @@ export {
   buffer,
   boolean,
   path,
+  beidou,
+  convert,
 }

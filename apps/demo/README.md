@@ -1,4 +1,4 @@
-# 格网引擎
+# 格网编码系统
 
 基于 **GeoSOT（地理空间剖分网格）** 统一编码的桌面 / 浏览器演示应用。以 Cesium 三维地球为载体，把点、线、面、栅格等多源数据挂接到离散网格单元上，完成「编码 — 入格 — 存储 — 选格查询 — 尺度变换 — 可视化」闭环，作为格网孪生引擎子系统的汇报与验证前端。
 
@@ -84,7 +84,7 @@ pnpm demo:electron        # Electron 桌面窗口
 pnpm demo:dist            # 打本机安装包 → apps/demo/release/
 ```
 
-安装包产物名形如：`格网引擎-<version>-<os>-<arch>.dmg` / `.exe`。
+安装包产物名形如：`格网编码系统-<version>-<os>-<arch>.dmg` / `.exe`。
 
 ### 1. 浏览网格底座
 
@@ -165,7 +165,7 @@ pnpm demo:dist            # 打本机安装包 → apps/demo/release/
 ## 仓库位置与依赖包
 
 ```text
-apps/demo/                 本应用（格网引擎）
+apps/demo/                 本应用（格网编码系统）
 packages/grid-core/        GeoSOT 编码与码代数
 packages/grid-ingest/      多源上格（矢量覆盖等）
 packages/grid-store/       Memory / JSON / SQLite 数据仓

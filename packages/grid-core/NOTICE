@@ -3,6 +3,11 @@ This package incorporates source code originally from:
   https://github.com/catnuko/geosot
   (MIT License; derived from dadream/geosot GeoSOT encode/decode)
 
-Copyright notices from the upstream project are retained in LICENSE.
+  https://github.com/ywx001/BeidouGridCodec
+  (MIT License; Beidou 2D grid encode/decode algorithm ported into src/beidou.ts)
+
+Copyright notices from the upstream projects are retained in LICENSE where applicable.
 
 Subsequent modifications are part of the DGGS project (@dggs/grid-core).
+
+北斗网格位置码实现为实用 Demo 移植，非正式 GB/T 39409 合规认证。

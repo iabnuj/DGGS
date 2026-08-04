@@ -24,7 +24,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const require = createRequire(import.meta.url)
 const isDev = !app.isPackaged
 
-app.setName("格网引擎")
+app.setName("格网编码系统")
 
 const logPath = path.join(app.getPath("userData"), "dggs-main.log")
 
@@ -127,16 +127,29 @@ function createMenu() {
         process.platform === "darwin" ? { role: "close" } : { role: "quit" },
       ],
     },
+    // Electron 必须挂编辑菜单 role，选中文本后的复制/粘贴快捷键才会生效
+    {
+      label: "编辑",
+      submenu: [
+        { role: "undo", label: "撤销" },
+        { role: "redo", label: "重做" },
+        { type: "separator" },
+        { role: "cut", label: "剪切", accelerator: "CmdOrCtrl+X" },
+        { role: "copy", label: "复制", accelerator: "CmdOrCtrl+C" },
+        { role: "paste", label: "粘贴", accelerator: "CmdOrCtrl+V" },
+        { role: "selectAll", label: "全选", accelerator: "CmdOrCtrl+A" },
+      ],
+    },
     {
       label: "帮助",
       submenu: [
         {
-          label: "关于格网引擎",
+          label: "关于格网编码系统",
           click: () => {
             dialog.showMessageBox({
               type: "info",
               title: "关于",
-              message: "格网引擎",
+              message: "格网编码系统",
               detail: `版本 ${app.getVersion()}\nGeoSOT + Cesium\n本地仓：SQLite\n样例数据：${getSampleDataDir()}`,
               icon: getAppIconPath(),
             })
@@ -146,6 +159,55 @@ function createMenu() {
     },
   ]
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+}
+
+/** 保证 Ctrl/⌘ + C/X/V/A 能作用于页面选区（含 macOS 上按 Ctrl 的习惯）。 */
+function wireClipboardShortcuts(win) {
+  win.webContents.on("before-input-event", (event, input) => {
+    if (input.type !== "keyDown") return
+    if (!(input.control || input.meta) || input.alt) return
+    const key = input.key.toLowerCase()
+    const wc = win.webContents
+    if (key === "c") {
+      wc.copy()
+      event.preventDefault()
+    } else if (key === "x") {
+      wc.cut()
+      event.preventDefault()
+    } else if (key === "v") {
+      wc.paste()
+      event.preventDefault()
+    } else if (key === "a") {
+      wc.selectAll()
+      event.preventDefault()
+    }
+  })
+
+  win.webContents.on("context-menu", (_event, params) => {
+    const items = []
+    if (params.isEditable || params.selectionText) {
+      if (params.isEditable) {
+        items.push(
+          { role: "cut", label: "剪切", enabled: params.editFlags.canCut },
+          { role: "copy", label: "复制", enabled: params.editFlags.canCopy },
+          { role: "paste", label: "粘贴", enabled: params.editFlags.canPaste },
+          { type: "separator" },
+          {
+            role: "selectAll",
+            label: "全选",
+            enabled: params.editFlags.canSelectAll,
+          }
+        )
+      } else if (params.selectionText) {
+        items.push({
+          label: "复制",
+          click: () => win.webContents.copy(),
+        })
+      }
+    }
+    if (items.length === 0) return
+    Menu.buildFromTemplate(items).popup({ window: win })
+  })
 }
 
 async function handleOpenJson() {
@@ -337,7 +399,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
-    title: "格网引擎",
+    title: "格网编码系统",
     icon: getAppIconPath(),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
@@ -353,6 +415,8 @@ function createWindow() {
   } else {
     void mainWindow.loadFile(path.join(__dirname, "../dist/index.html"))
   }
+
+  wireClipboardShortcuts(mainWindow)
 
   mainWindow.on("closed", () => {
     mainWindow = null

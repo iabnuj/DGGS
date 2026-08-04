@@ -5,6 +5,7 @@ import { DisplayTab } from "@/components/tabs/DisplayTab"
 import { DataTab } from "@/components/tabs/DataTab"
 import { MapTab } from "@/components/tabs/MapTab"
 import { RoutePlanTab } from "@/components/tabs/RoutePlanTab"
+import { ConvertTab } from "@/components/tabs/ConvertTab"
 import { useAppStore } from "@/state/store"
 
 export function LeftDrawer() {
@@ -23,8 +24,12 @@ export function LeftDrawer() {
             className="h-9 w-9 shrink-0 rounded-full"
           />
           <div className="min-w-0">
-            <p className="text-lg font-semibold tracking-wide text-foreground">格网引擎</p>
-            <p className="text-xs text-muted-foreground">GeoSOT</p>
+            <p className="text-lg font-semibold tracking-wide text-foreground">格网编码系统</p>
+            <p className="text-xs leading-snug text-muted-foreground">
+              <span className="font-medium text-foreground/85">GB/T 40087-2021</span>
+              <br />
+              GJB 8896-2017
+            </p>
           </div>
         </div>
         <Button
@@ -44,6 +49,11 @@ export function LeftDrawer() {
           className="gap-0"
           items={[
             { id: "data", title: "格网数据", content: <DataTab /> },
+            {
+              id: "convert",
+              title: "格码转换",
+              content: <ConvertTab />,
+            },
             {
               id: "route",
               title: "航线通路规划",

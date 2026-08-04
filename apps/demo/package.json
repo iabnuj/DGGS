@@ -1,8 +1,8 @@
 {
   "name": "@dggs/demo",
   "version": "0.1.0",
-  "description": "格网引擎 · GeoSOT + Cesium",
-  "author": "格网引擎",
+  "description": "格网编码系统 · GeoSOT + Cesium",
+  "author": "格网编码系统",
   "private": true,
   "type": "module",
   "main": "electron/main.mjs",
