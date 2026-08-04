@@ -41,14 +41,22 @@ export async function syncLayersFromWarehouse() {
 
 /** Collect grid codes for currently visible data layers and paint them on the map. */
 export async function refreshDataOverlay() {
-  const layers = useAppStore.getState().layers.filter(
+  const state = useAppStore.getState()
+  const layers = state.layers.filter(
     (l) => l.visible && l.type !== "field" && !l.source.startsWith("semantic:")
   )
   const codes = new Set<string>()
   const wh = getWarehouse()
+  const taskLevel = state.situationTaskLevel
   for (const layer of layers) {
     const rows = (await wh.list({ source: layer.source })) as GridCellRecord[]
-    for (const r of rows) codes.add(r.gridId)
+    for (const r of rows) {
+      if (layer.source === "assault_units") {
+        const tl = r.attrs?.taskLevel
+        if (typeof tl === "number" && tl > taskLevel) continue
+      }
+      codes.add(r.gridId)
+    }
   }
   const list = [...codes]
   useAppStore.getState().setDataOverlayCodes(list)

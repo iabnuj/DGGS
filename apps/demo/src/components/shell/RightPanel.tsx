@@ -24,6 +24,7 @@ import { flyToCode, getMapRuntime } from "@/map/useCesiumMap"
 import type { GridCellRecord } from "@dggs/grid-ingest"
 import { computeCellStats } from "@/data/computeCellStats"
 import { StatsGroup } from "@/components/shell/StatsCard"
+import { SaveAsDataPanel } from "@/components/shell/SaveAsDataPanel"
 
 const MULTI_CELL_LIMIT = 120
 
@@ -608,6 +609,9 @@ export function RightPanel() {
           <SelectionScaleToolbar />
         </div>
         <div className="mb-3">
+          <SaveAsDataPanel />
+        </div>
+        <div className="mb-3">
           <AnalysisToolbar />
         </div>
         <dl className="mb-3 space-y-2 text-xs">
@@ -673,6 +677,9 @@ export function RightPanel() {
     >
       <div className="mb-2">
         <SelectionScaleToolbar />
+      </div>
+      <div className="mb-2">
+        <SaveAsDataPanel />
       </div>
       <div className="mb-2">
         <AnalysisToolbar />

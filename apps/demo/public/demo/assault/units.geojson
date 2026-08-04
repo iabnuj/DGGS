@@ -1,0 +1,139 @@
+{
+  "type": "FeatureCollection",
+  "name": "assault_units",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "blue_start",
+        "name": "蓝方出发阵地",
+        "label": "蓝方出发阵地",
+        "role": "blue_start",
+        "taskLevel": 9,
+        "side": "blue",
+        "gridCode": "G001212130-000"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          86.12,
+          42.12
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "blue_goal",
+        "name": "突击目标",
+        "label": "突击目标",
+        "role": "blue_goal",
+        "taskLevel": 9,
+        "side": "blue",
+        "gridCode": "G001212130-330"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          86.88,
+          42.88
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "blue_company",
+        "name": "蓝方突击分队",
+        "label": "蓝方突击分队",
+        "role": "blue_unit",
+        "taskLevel": 11,
+        "side": "blue",
+        "gridCode": "G001212130-030"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          86.28,
+          42.32
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "blue_flight",
+        "name": "蓝方编队节点",
+        "label": "蓝方编队节点",
+        "role": "blue_unit",
+        "taskLevel": 13,
+        "side": "blue",
+        "gridCode": "G001212130-030"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          86.35,
+          42.4
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "red_radar",
+        "name": "敌雷达站",
+        "label": "敌雷达站",
+        "role": "red_radar",
+        "taskLevel": 9,
+        "side": "red",
+        "gridCode": "G001212130-033"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          86.48,
+          42.52
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "red_sam",
+        "name": "敌防空阵地",
+        "label": "敌防空阵地",
+        "role": "red_threat",
+        "taskLevel": 11,
+        "side": "red",
+        "gridCode": "G001212130-300"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          86.58,
+          42.6
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "red_patrol",
+        "name": "敌巡逻点",
+        "label": "敌巡逻点",
+        "role": "red_threat",
+        "taskLevel": 13,
+        "side": "red",
+        "gridCode": "G001212130-122"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          86.65,
+          42.45
+        ]
+      }
+    }
+  ]
+}

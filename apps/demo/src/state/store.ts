@@ -121,13 +121,27 @@ type AppState = {
   setAnalysisSetA: (codes: string[] | null) => void
   setAnalysisSetB: (codes: string[] | null) => void
 
-  /** 航线通路规划起终点与拾取模式 */
+  /** 航线通路 / 突击通道起终点与拾取模式 */
   routeStart: string | null
   routeGoal: string | null
   routePickMode: RoutePickMode
   setRouteStart: (code: string | null) => void
   setRouteGoal: (code: string | null) => void
   setRoutePickMode: (m: RoutePickMode) => void
+
+  /** 分级态势：显示 taskLevel ≤ 该值的部队/目标 */
+  situationTaskLevel: number
+  setSituationTaskLevel: (level: number) => void
+
+  /** 选中格「另存为」上次目标图层（用于追加） */
+  lastDrawnSave: {
+    source: string
+    label: string
+    drawnType: string
+  } | null
+  setLastDrawnSave: (
+    v: { source: string; label: string; drawnType: string } | null
+  ) => void
 
   setGridVisible: (v: boolean) => void
   setLevel: (v: number) => void
@@ -259,6 +273,12 @@ export const useAppStore = create<AppState>((set) => ({
   setRouteStart: (routeStart) => set({ routeStart }),
   setRouteGoal: (routeGoal) => set({ routeGoal }),
   setRoutePickMode: (routePickMode) => set({ routePickMode }),
+
+  situationTaskLevel: 13,
+  setSituationTaskLevel: (situationTaskLevel) => set({ situationTaskLevel }),
+
+  lastDrawnSave: null,
+  setLastDrawnSave: (lastDrawnSave) => set({ lastDrawnSave }),
 
   setGridVisible: (gridVisible) => set({ gridVisible }),
   setLevel: (level) => set({ level }),

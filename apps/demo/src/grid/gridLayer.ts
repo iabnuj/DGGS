@@ -265,11 +265,18 @@ export class GridLayer {
   private options: GridDrawOptions = { ...DEFAULT_OPTIONS }
   /** Skip full mesh rebuild when camera / style signature unchanged. */
   private lastViewKey = ""
+  /** 当前底座实际绘制层级（可能因视口过大而粗于请求层级） */
+  private displayLevel = 10
 
   constructor(private viewer: Viewer) {}
 
   get size() {
     return this.cells.length
+  }
+
+  /** 屏幕上网格底座对应的层级；点选/光标应使用此值 */
+  getDisplayLevel(): number {
+    return this.displayLevel
   }
 
   /** 返回当前视口所有网格编码（供场数据生成等用途） */
@@ -709,6 +716,8 @@ export class GridLayer {
     truncated: boolean
     level: number
   } {
+    /** 视口内网格软上限：超过则逐级变粗，避免大视窗+细层级铺成白纱 */
+    const SOFT_MAX_CELLS = 2_800
     const set = new Set<string>()
     let truncated = false
     let usedLevel = level
@@ -720,19 +729,24 @@ export class GridLayer {
       }
     }
 
-    try {
-      coverAll(level)
-    } catch {
+    const tryCover = (lv: number): boolean => {
+      try {
+        coverAll(lv)
+        return true
+      } catch {
+        return false
+      }
+    }
+
+    if (!tryCover(level) || set.size > SOFT_MAX_CELLS) {
       truncated = true
-      let lv = level
+      let lv = level - 1
       while (lv >= 4) {
-        try {
-          coverAll(lv)
+        if (tryCover(lv) && (set.size <= SOFT_MAX_CELLS || lv === 4)) {
           usedLevel = lv
           break
-        } catch {
-          lv -= 1
         }
+        lv -= 1
       }
     }
 
@@ -760,7 +774,7 @@ export class GridLayer {
         count: this.cells.length,
         truncated: false,
         skipped: true,
-        level,
+        level: this.displayLevel,
       }
     }
 
@@ -777,8 +791,10 @@ export class GridLayer {
       bboxes,
       level
     )
+    this.displayLevel = usedLevel
     this.draw(codes)
-    this.lastViewKey = key
+    // 签名按实际绘制层级，避免「请求 L12、画出 L8」后签名仍锁在 L12
+    this.lastViewKey = this.viewSignature(usedLevel)
     return {
       count: this.cells.length,
       truncated,

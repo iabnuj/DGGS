@@ -1,0 +1,58 @@
+{
+  "id": "assault-corridor-hejing",
+  "title": "合静演训 · 空中突击通道",
+  "description": "预置地形/气象/电磁/雷达威胁场与部队态势点，可一键计算多约束突击通道。",
+  "level": 12,
+  "bbox": {
+    "west": 86,
+    "south": 42,
+    "east": 87,
+    "north": 43
+  },
+  "startCode": "G001212130-000",
+  "goalCode": "G001212130-330",
+  "startLabel": "蓝方出发阵地",
+  "goalLabel": "突击目标",
+  "unitsSource": "assault_units",
+  "defaultTaskLevel": 13,
+  "constraints": {
+    "maxElevation": 3000,
+    "maxWind": 40,
+    "maxEm": -40,
+    "maxRadar": -20
+  },
+  "toggles": {
+    "elevation": true,
+    "wind": true,
+    "em": true,
+    "radar": true
+  },
+  "fields": [
+    {
+      "file": "elevation.csv",
+      "source": "elevation",
+      "displayName": "地形（撞山约束）",
+      "rampId": "terrain"
+    },
+    {
+      "file": "wind_speed.csv",
+      "source": "wind_speed",
+      "displayName": "气象（强对流禁区）",
+      "rampId": "wind_speed"
+    },
+    {
+      "file": "em_intensity.csv",
+      "source": "em_intensity",
+      "displayName": "电磁威胁",
+      "rampId": "em_intensity"
+    },
+    {
+      "file": "radar_coverage.csv",
+      "source": "radar_coverage",
+      "displayName": "敌雷达探测",
+      "rampId": "radar_coverage"
+    }
+  ],
+  "unitsDisplayName": "部队与目标态势",
+  "cameraHeight": 180000
+}

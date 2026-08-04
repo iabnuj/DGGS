@@ -2,9 +2,14 @@ import { useRef } from "react"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Slider } from "@/components/ui/slider"
+import { Button } from "@/components/ui/button"
 import { OverlayScrollArea } from "@/components/ui/overlay-scroll-area"
 import { getMapRuntime } from "@/map/useCesiumMap"
 import { useAppStore } from "@/state/store"
+import {
+  applySituationTaskLevel,
+  coarsenSelectionToTaskLevel,
+} from "@/data/loadAssaultDemo"
 
 function ColorField({
   id,
@@ -42,6 +47,7 @@ export function DisplayTab() {
   const autoLevel = useAppStore((s) => s.autoLevel)
   const extrudeByAttr = useAppStore((s) => s.extrudeByAttr)
   const drawOptions = useAppStore((s) => s.drawOptions)
+  const situationTaskLevel = useAppStore((s) => s.situationTaskLevel)
   const opacityTimer = useRef<number | undefined>(undefined)
 
   const bump = () => getMapRuntime()?.refresh()
@@ -58,6 +64,38 @@ export function DisplayTab() {
 
   return (
     <OverlayScrollArea className="h-full" contentClassName="space-y-4">
+      <div className="space-y-2 rounded-md border border-border/60 bg-muted/20 px-2.5 py-2.5">
+        <p className="text-[11px] font-medium text-foreground">分级态势</p>
+        <p className="text-[10px] leading-relaxed text-muted-foreground">
+          按任务层级过滤部队/目标（仅显示 taskLevel ≤ 当前值）。可与选中格「卷粗」联动。
+        </p>
+        <div className="flex items-center justify-between">
+          <Label>任务层级</Label>
+          <span className="font-mono text-xs text-foreground">
+            ≤ L{situationTaskLevel}
+          </span>
+        </div>
+        <Slider
+          value={[situationTaskLevel]}
+          min={9}
+          max={13}
+          step={1}
+          onValueChange={([v]) => {
+            if (v == null) return
+            void applySituationTaskLevel(v)
+          }}
+        />
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          className="h-7 w-full text-[11px]"
+          onClick={() => coarsenSelectionToTaskLevel()}
+        >
+          选中格卷粗到任务层级
+        </Button>
+      </div>
+
       <div className="flex items-center justify-between gap-3">
         <Label htmlFor="show-grid">显示网格底座</Label>
         <Switch

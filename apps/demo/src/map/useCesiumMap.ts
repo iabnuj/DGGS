@@ -285,6 +285,11 @@ export function useCesiumMap(containerId = "cesiumContainer") {
           return
         }
         if (s.gridCount !== count) useAppStore.getState().setGridCount(count)
+        // 手动锁定层级时：画面降级则同步 store，避免点选仍按细层编码
+        // 自动调级时勿回写，否则会与 levelFromCamera 来回抢层级
+        if (drawnLevel !== requestedLevel && !s.autoLevel) {
+          useAppStore.getState().setLevel(drawnLevel)
+        }
         const text = truncated
           ? `视窗过大，已降级 · L${drawnLevel}（目标 L${requestedLevel}）· ${count} 格`
           : `L${drawnLevel} · ${count} 格`
@@ -485,7 +490,8 @@ export function useCesiumMap(containerId = "cesiumContainer") {
       const carto = Cartographic.fromCartesian(cartesian)
       const lng = CesiumMath.toDegrees(carto.longitude)
       const lat = CesiumMath.toDegrees(carto.latitude)
-      const level = useAppStore.getState().level
+      const level =
+        gridLayer.getDisplayLevel?.() ?? useAppStore.getState().level
       const gridCode = geosot.locToQuaternary(lng, lat, level)
       useAppStore.getState().setCursor({ lng, lat, gridCode })
     }, ScreenSpaceEventType.MOUSE_MOVE)
@@ -519,7 +525,9 @@ export function useCesiumMap(containerId = "cesiumContainer") {
         const carto = Cartographic.fromCartesian(cartesian)
         const lng = CesiumMath.toDegrees(carto.longitude)
         const lat = CesiumMath.toDegrees(carto.latitude)
-        finalCode = geosot.locToQuaternary(lng, lat, useAppStore.getState().level)
+        const pickLevel =
+          gridLayer.getDisplayLevel?.() ?? useAppStore.getState().level
+        finalCode = geosot.locToQuaternary(lng, lat, pickLevel)
       }
       const level = geosot.getLevel(finalCode)
       const routePick = useAppStore.getState().routePickMode

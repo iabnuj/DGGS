@@ -45,7 +45,7 @@ export function LeftDrawer() {
       </header>
       <div className="flex min-h-0 flex-1 flex-col">
         <Accordion
-          defaultOpen="data"
+          defaultOpen="route"
           className="gap-0"
           items={[
             { id: "data", title: "格网数据", content: <DataTab /> },
@@ -56,7 +56,7 @@ export function LeftDrawer() {
             },
             {
               id: "route",
-              title: "航线通路规划",
+              title: "空中突击通道",
               content: <RoutePlanTab />,
             },
             { id: "display", title: "格网显示", content: <DisplayTab /> },

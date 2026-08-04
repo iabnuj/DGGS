@@ -1,10 +1,14 @@
 /**
- * 航线通路规划（论证级）：
- * 综合高程 / 风速 / 电磁 / 雷达场约束，在可行格上 A* 求路径。
+ * 空中突击通道（论证级）：
+ * 综合高程 / 风速 / 电磁 / 雷达场 + 禁飞硬拦，在可行格上 A* 求路径。
  */
 import { path as gridPath, cover, geosot } from "@dggs/grid-core"
 import type { GridCellRecord } from "@dggs/grid-ingest"
 import { getWarehouse } from "@/data/warehouseBoot"
+import {
+  listDrawnFieldSources,
+  loadHardBlockCodes,
+} from "@/data/drawnData"
 
 export type CorridorConstraints = {
   maxElevation: number
@@ -18,6 +22,8 @@ export type ConstraintToggles = {
   wind: boolean
   em: boolean
   radar: boolean
+  /** 禁飞 / 禁入空域（hard_block） */
+  nofly: boolean
 }
 
 export type CorridorRunOptions = {
@@ -27,10 +33,10 @@ export type CorridorRunOptions = {
 }
 
 export const DEFAULT_CORRIDOR: CorridorConstraints = {
-  maxElevation: 2800,
-  maxWind: 35,
-  maxEm: -45,
-  maxRadar: -15,
+  maxElevation: 3000,
+  maxWind: 40,
+  maxEm: -40,
+  maxRadar: -20,
 }
 
 export const DEFAULT_TOGGLES: ConstraintToggles = {
@@ -38,6 +44,7 @@ export const DEFAULT_TOGGLES: ConstraintToggles = {
   wind: true,
   em: true,
   radar: true,
+  nofly: true,
 }
 
 export const ELEV_SOURCES = ["elevation_dem_glo30", "elevation", "dem_glo30"]
@@ -45,6 +52,7 @@ export const WIND_SOURCES = ["wind_speed"]
 export const EM_SOURCES = ["em_intensity"]
 export const RADAR_SOURCES = ["radar_coverage"]
 
+/** 多源合并：后出现的 source 覆盖同格（手绘区压过预置场） */
 async function loadFieldMap(sources: string[]): Promise<Map<string, number>> {
   const wh = getWarehouse()
   const map = new Map<string, number>()
@@ -56,12 +64,19 @@ async function loadFieldMap(sources: string[]): Promise<Map<string, number>> {
         map.set(r.gridId, v)
       }
     }
-    if (map.size > 0) break
   }
   return map
 }
 
-/** 某类约束场是否已入库 */
+async function resolveFieldSources(
+  base: string[],
+  kind: "em" | "radar" | "wind" | "elevation"
+): Promise<string[]> {
+  const drawn = await listDrawnFieldSources(kind)
+  return [...base, ...drawn]
+}
+
+/** 某类约束场是否已入库（含手绘场） */
 export async function fieldSourceAvailable(sources: string[]): Promise<boolean> {
   const wh = getWarehouse()
   for (const source of sources) {
@@ -69,6 +84,11 @@ export async function fieldSourceAvailable(sources: string[]): Promise<boolean> 
     if (rows.some((r) => typeof r.attrs?.field_value === "number")) return true
   }
   return false
+}
+
+export async function noflySourceAvailable(): Promise<boolean> {
+  const codes = await loadHardBlockCodes()
+  return codes.size > 0
 }
 
 export type CorridorResult = {
@@ -107,13 +127,35 @@ export async function runAssaultCorridor(
   }
   const universe = cover.coverBBox(bbox, level)
 
-  const elev = enabled.elevation ? await loadFieldMap(ELEV_SOURCES) : new Map()
-  const wind = enabled.wind ? await loadFieldMap(WIND_SOURCES) : new Map()
-  const em = enabled.em ? await loadFieldMap(EM_SOURCES) : new Map()
-  const radar = enabled.radar ? await loadFieldMap(RADAR_SOURCES) : new Map()
+  const elevSources = enabled.elevation
+    ? await resolveFieldSources(ELEV_SOURCES, "elevation")
+    : []
+  const windSources = enabled.wind
+    ? await resolveFieldSources(WIND_SOURCES, "wind")
+    : []
+  const emSources = enabled.em
+    ? await resolveFieldSources(EM_SOURCES, "em")
+    : []
+  const radarSources = enabled.radar
+    ? await resolveFieldSources(RADAR_SOURCES, "radar")
+    : []
+
+  const elev = elevSources.length ? await loadFieldMap(elevSources) : new Map()
+  const wind = windSources.length ? await loadFieldMap(windSources) : new Map()
+  const em = emSources.length ? await loadFieldMap(emSources) : new Map()
+  const radar = radarSources.length
+    ? await loadFieldMap(radarSources)
+    : new Map()
+
+  const hardBlocks =
+    enabled.nofly !== false ? await loadHardBlockCodes() : new Set<string>()
 
   const blocked = new Set<string>()
   for (const code of universe) {
+    if (hardBlocks.has(code)) {
+      blocked.add(code)
+      continue
+    }
     if (enabled.elevation) {
       const z = elev.get(code)
       if (z != null && z > constraints.maxElevation) {
@@ -155,15 +197,22 @@ export async function runAssaultCorridor(
       blocked: [...blocked],
       feasible: universe.length - blocked.size,
       level,
-      reason: "无可行航线通路（约束过严或起终点被阻断）",
+      reason: "无可行突击通道（约束过严或起终点被阻断）",
     }
   }
+
+  const active: string[] = []
+  if (enabled.nofly !== false && hardBlocks.size > 0) active.push("禁飞")
+  if (enabled.elevation) active.push("地形")
+  if (enabled.wind) active.push("气象")
+  if (enabled.em) active.push("电磁")
+  if (enabled.radar) active.push("雷达")
 
   return {
     path,
     blocked: [...blocked],
     feasible: universe.length - blocked.size,
     level,
-    reason: `航线通路 ${path.length} 格 · 禁行 ${blocked.size} · 可行 ${universe.length - blocked.size} · A*`,
+    reason: `突击通道 ${path.length} 格 · 禁行 ${blocked.size} · 可行 ${universe.length - blocked.size} · 约束[${active.join("+") || "无"}]`,
   }
 }
